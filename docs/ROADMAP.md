@@ -1,14 +1,67 @@
-# Roadmap após a atualização 0.2
+# Roadmap — Finance Intelligence
 
-Preservar a aplicação existente. Documentos originais não terão biblioteca permanente.
+Princípio: tudo que o usuário faz (ler fatura, subir planilha, cadastrar empréstimo, dividir
+compra) acontece **dentro do app**, no computador ou no celular. O desenvolvimento só cria e
+ajusta a estrutura. Documentos originais não são guardados; somente o que o usuário confirma.
 
-1. Concluir validação visual dos novos formulários e leitores no navegador e em celular; ampliar parsers por emissor sem aceitar valores incertos automaticamente.
-2. Validar PostgreSQL remoto com papel restrito, backups e restauração; escolher hospedagem Node e conectar repositório privado. GitHub/Supabase não substituem a hospedagem da aplicação.
-3. Cartões, compras, parcelamentos e faturas sem contabilizar pagamento duas vezes; pagamentos parciais e conciliação muitos-para-muitos.
-4. Dívidas, cronogramas e comparação de renegociação com cálculos verificáveis.
-5. Orçamentos, metas e patrimônio; edição auditada e aditivos contratuais.
-6. MFA, recuperação de acesso e testes operacionais de carga/disponibilidade.
-7. Gmail com OAuth próprio, consentimento mínimo, revogação e extração transitória. Nenhuma conexão simulada.
-8. Consultor IA com ferramentas de leitura sobre dados estruturados, cálculos determinísticos e propostas sujeitas à confirmação. Separar realizados, previstos e estimados.
+## Concluído (até 7 nov 2026)
 
-Nenhuma dessas evoluções é apresentada como concluída. A versão 0.2 já acrescenta leitura temporária de documentos, revisão, conciliação de evidências, condições contratuais e backup criptografado; as evidências estão em VALIDACAO.md.
+- **Base 0.2:** contas, lançamentos, compromissos, contratos, projeção, auditoria, backup
+  criptografado, leitura temporária de PDF/imagem/texto e CSV/OFX.
+- **Produção:** Vercel + Supabase (papel restrito, RLS, Data API fechada), base pessoal migrada.
+- **Multiusuário:** convites de uso único; dados isolados por usuário; bloqueio por e-mail.
+- **Cartões:** cartão como conta (banco, bandeira, titular, final, fechamento, vencimento,
+  limite); leitura de fatura identifica o cartão e lança as compras nele; pagamento da fatura
+  como transferência; projeção desconta a fatura no vencimento.
+- **Categorias:** grupo / subcategoria (Alimentação / Mercado, Delivery…), sugestão automática
+  com memória das escolhas, categorias próprias, troca e divisão de um lançamento entre
+  categorias, relatório por grupo e subcategoria.
+
+## Próximas fases
+
+### Fase A — Importar planilha no app (.xlsx/.csv)
+Assistente em Importações: escolher o arquivo, o app reconhece os formatos e mostra tudo para
+revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de gravar.
+- Abas mensais "Descrição · Valor · Vencimento · Pagamento · Status · Observação" → compromissos
+  (PENDENTE) ou pagamentos (PAGO, na conta escolhida); vencimento como data ou só o dia.
+- Blocos de parcelas ("24X 178,85", "60 × 104,72" com datas e status) → empréstimos/acordos
+  com parcelas pagas marcadas.
+- Blocos de assinaturas/gastos fixos com forma de pagamento → compromissos recorrentes
+  vinculados ao cartão.
+- Itens repetidos entre meses (Netflix, aluguel) agrupados; reimportar não duplica.
+
+### Fase B — Empréstimos e acordos no app
+- "Peguei emprestado" ou "Emprestei", com pessoa/instituição, **valor total, nº de parcelas,
+  dia do mês** (o app divide e gera as parcelas) ou valores parcela a parcela.
+- Ler o print/foto com os valores (OCR) ou digitar manualmente.
+- Marcar parcela paga/recebida (vira pagamento na conta), saldo devedor e quitação antecipada.
+- Visão "Quanto devo / quanto me devem" e parcelas na projeção.
+
+### Fase C — Nota de mercado
+- Foto/PDF/texto do cupom (NFC-e) → itens com categoria sugerida por produto (comida → Mercado,
+  detergente → Limpeza, travesseiro → Cama, mesa e banho) e memória por produto.
+- Encontrar a compra correspondente no cartão/conta e dividi-la automaticamente; descontos
+  rateados; soma sempre igual ao total pago.
+- Opcional: chave/QR da NFC-e na consulta pública da SEFAZ-RS (validar viabilidade antes).
+
+### Fase D — Faturas de cartão completas
+- Fechamento: compras após o fechamento vão para a próxima fatura; fatura atual × próxima.
+- Parcelamentos ("PARC 03/10") geram as parcelas futuras como previstas.
+- Limite disponível, alerta de limite e conferência fatura lida × lançamentos.
+
+### Fase E — Orçamentos e metas
+- Limite mensal por grupo/subcategoria (ex.: Delivery até R$ 400) com alerta ao se aproximar.
+- Metas de economia e reserva; acompanhamento mês a mês.
+
+### Fase F — Relatórios
+- Comparação mês a mês por categoria, evolução de gastos, maiores estabelecimentos.
+- Exportar CSV/Excel do período.
+
+### Fase G — Conta e segurança
+- Recuperação de senha por e-mail, MFA, encerrar sessões em outros aparelhos.
+- Infra: "Enforce SSL" no Supabase, APP_ORIGIN definitivo, backups automáticos.
+
+### Fase H — Depois
+- Consultor IA sobre os dados estruturados (perguntas, simulações), com cálculos verificáveis e
+  propostas sujeitas à confirmação.
+- Gmail com OAuth próprio e consentimento mínimo (faturas e boletos por e-mail).
