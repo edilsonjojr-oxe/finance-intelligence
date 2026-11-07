@@ -37,14 +37,19 @@ import {
   Upload,
   Wallet,
   X,
+  CreditCard,
+  Pencil,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
-import { forecast, totals } from "@/lib/finance";
+import { forecast, isCard, nextDueDate, totals } from "@/lib/finance";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
 import CandidateEditor from "./candidate-editor";
 import BackupPanel from "./backup-panel";
 import InvitePanel from "./invite-panel";
+import CategoryPanel from "./category-panel";
+import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
+import { categoryList } from "@/lib/categorize";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -63,6 +68,7 @@ type Modal =
   | "contract"
   | "settle"
   | "reverse"
+  | "accountEdit"
   | null;
 const navigation = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
@@ -110,21 +116,6 @@ const pageText: Record<Page, { title: string; subtitle: string }> = {
     subtitle: "Acompanhe a base, a auditoria e as próximas etapas do produto.",
   },
 };
-const categoryOptions = [
-  "Sem categoria",
-  "Moradia",
-  "Alimentação",
-  "Transporte",
-  "Saúde",
-  "Educação",
-  "Lazer",
-  "Assinaturas",
-  "Internet",
-  "Salário",
-  "Serviços",
-  "Impostos",
-  "Outros",
-];
 const dateLabel = (date: string) =>
   new Date(`${date}T12:00:00Z`).toLocaleDateString("pt-BR", {
     day: "2-digit",
@@ -179,14 +170,19 @@ function Amount({
     />
   );
 }
+/** Categoria com sugestões (prontas + suas + já usadas); aceita digitar uma nova. */
 function Category() {
   return (
     <Field label="Categoria">
-      <select name="category">
-        {categoryOptions.map((c) => (
-          <option key={c}>{c}</option>
-        ))}
-      </select>
+      <input
+        name="category"
+        list="category-list"
+        defaultValue="Sem categoria"
+        required
+        maxLength={80}
+        autoComplete="off"
+        onFocus={(e) => e.currentTarget.value === "Sem categoria" && e.currentTarget.select()}
+      />
     </Field>
   );
 }
@@ -513,6 +509,8 @@ export default function FinanceApp() {
   const [modal, setModal] = useState<Modal>(null),
     [target, setTarget] = useState(""),
     [kind, setKind] = useState("expense"),
+    [accountType, setAccountType] = useState("checking"),
+    [transferTo, setTransferTo] = useState(""),
     [busy, setBusy] = useState(false);
   const [days, setDays] = useState(30),
     [simulation, setSimulation] = useState(""),
@@ -557,9 +555,17 @@ export default function FinanceApp() {
   function open(type: Modal, id = "") {
     setTarget(id);
     setKind("expense");
+    setAccountType("checking");
+    setTransferTo("");
     setSettlementId("");
     setError("");
     setModal(type);
+  }
+  /** Pagamento de fatura = transferência da conta escolhida para o cartão (não é despesa nova). */
+  function payCard(cardId: string) {
+    open("movement");
+    setKind("transfer");
+    setTransferTo(cardId);
   }
   async function act(
     action: string,
@@ -591,13 +597,18 @@ export default function FinanceApp() {
     if (fields.amount) fields.amount = cleanMoney(fields.amount);
     if (fields.opening_balance)
       fields.opening_balance = cleanMoney(fields.opening_balance);
+    if (fields.credit_limit) fields.credit_limit = cleanMoney(fields.credit_limit);
     try {
       if (modal === "account")
         await act(
           "account.create",
           fields,
-          "Conta cadastrada. Seu saldo inicial já está disponível.",
+          fields.type === "credit_card"
+            ? "Cartão cadastrado. Compras lidas de faturas podem ser vinculadas a ele."
+            : "Conta cadastrada. Seu saldo inicial já está disponível.",
         );
+      if (modal === "accountEdit")
+        await act("account.update", { ...fields, id: target }, "Dados atualizados.");
       if (modal === "movement")
         await act(
           "movement.create",
@@ -702,9 +713,18 @@ export default function FinanceApp() {
       </div>
     );
   const sum = totals(data.transactions, month);
-  const balance = decimal(
-    data.accounts.reduce((n, a) => n + cents(a.balance), 0n),
+  // Disponível = contas (sem cartões). Cartões mostram a fatura em aberto separadamente.
+  const bankAccounts = data.accounts.filter((a) => !isCard(a));
+  const cards = data.accounts.filter(isCard);
+  const balance = decimal(bankAccounts.reduce((n, a) => n + cents(a.balance), 0n));
+  const cardDebt = decimal(
+    cards.reduce((n, a) => n + (cents(a.balance) < 0n ? -cents(a.balance) : 0n), 0n),
   );
+  const usedCategories = [
+    ...data.transactions.map((t) => t.category),
+    ...data.obligations.map((o) => o.category),
+  ];
+  const allCategories = categoryList(data.categories, usedCategories);
   const projection = forecast(
     data.accounts,
     data.obligations,
@@ -727,7 +747,7 @@ export default function FinanceApp() {
     data.accounts.find((a) => a.id === id)?.name || "Conta";
   const options = data.accounts.map((a) => (
     <option key={a.id} value={a.id}>
-      {a.name}
+      {accountLabel(a)}
     </option>
   ));
   const exportURL = `/api/export?month=${encodeURIComponent(month)}&account=${encodeURIComponent(accountFilter)}&search=${encodeURIComponent(search)}`;
@@ -749,6 +769,7 @@ export default function FinanceApp() {
     contract: "Novo contrato recorrente",
     settle: "Liquidar compromisso",
     reverse: "Estornar lançamento",
+    accountEdit: "Editar conta ou cartão",
   };
   function MovementTable({ rows }: { rows: Movement[] }) {
     return !rows.length ? (
@@ -842,6 +863,11 @@ export default function FinanceApp() {
 
   return (
     <div className="app-shell">
+      <datalist id="category-list">
+        {allCategories.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
       {sidebar && (
         <button
           className="sidebar-scrim"
@@ -1065,15 +1091,17 @@ export default function FinanceApp() {
               <div className="metrics">
                 <div className="metric featured">
                   <div className="metric-label">
-                    Saldo atual consolidado <Wallet size={18} />
+                    Saldo disponível nas contas <Wallet size={18} />
                   </div>
                   <strong>{brl(balance)}</strong>
                   <span>
-                    {data.accounts.length}{" "}
-                    {data.accounts.length === 1
+                    {bankAccounts.length}{" "}
+                    {bankAccounts.length === 1
                       ? "conta cadastrada"
                       : "contas cadastradas"}{" "}
                     · hoje
+                    {cards.length > 0 &&
+                      ` · faturas em aberto: ${brl(cardDebt)}`}
                   </span>
                   <div className="metric-decoration" />
                 </div>
@@ -1377,42 +1405,66 @@ export default function FinanceApp() {
               </div>
               {data.accounts.length ? (
                 <div className="account-grid">
-                  {data.accounts.map((a) => (
-                    <section key={a.id} className="panel account-card">
+                  {data.accounts.map((a) => {
+                    const card = isCard(a);
+                    const debt = cents(a.balance) < 0n ? decimal(-cents(a.balance)) : "0.00";
+                    return (
+                    <section key={a.id} className={`panel account-card ${card ? "credit-card" : ""}`}>
                       <div className="account-card-top">
                         <span className="bank-icon">
-                          <Landmark size={23} />
+                          {card ? <CreditCard size={23} /> : <Landmark size={23} />}
                         </span>
-                        <Badge>
-                          {
-                            (
-                              {
-                                checking: "Conta corrente",
-                                savings: "Poupança",
-                                cash: "Dinheiro",
-                                investment: "Investimento",
-                              } as Record<string, string>
-                            )[a.type]
-                          }
-                        </Badge>
+                        <Badge>{accountTypeLabel[a.type] || a.type}</Badge>
                       </div>
                       <h2>{a.name}</h2>
-                      <p>{a.institution || "Sem instituição informada"}</p>
-                      <span className="eyebrow">SALDO CALCULADO</span>
+                      <p>
+                        {[a.institution, card && a.card_brand, card && a.card_last4 && `final ${a.card_last4}`]
+                          .filter(Boolean)
+                          .join(" · ") || "Sem instituição informada"}
+                      </p>
+                      {card && a.card_holder && (
+                        <p className="card-holder">Titular: {a.card_holder}</p>
+                      )}
+                      <span className="eyebrow">
+                        {card ? "FATURA EM ABERTO" : "SALDO CALCULADO"}
+                      </span>
                       <strong className="account-balance">
-                        {brl(a.balance)}
+                        {brl(card ? debt : a.balance)}
                       </strong>
                       <div className="account-reference">
-                        Inicial: {brl(a.opening_balance)}
-                        <span>
-                          Referência:{" "}
-                          {new Date(
-                            a.opening_date + "T12:00:00Z",
-                          ).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
-                        </span>
+                        {card ? (
+                          <>
+                            {a.credit_limit ? `Limite: ${brl(a.credit_limit)}` : "Limite não informado"}
+                            <span>
+                              {a.due_day
+                                ? `Vence em ${dateLabel(nextDueDate(data.today, a.due_day))}`
+                                : "Informe o dia de vencimento"}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            Inicial: {brl(a.opening_balance)}
+                            <span>
+                              Referência:{" "}
+                              {new Date(
+                                a.opening_date + "T12:00:00Z",
+                              ).toLocaleDateString("pt-BR", { timeZone: "UTC" })}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <div className="row-actions">
+                        <button className="text-button" type="button" onClick={() => open("accountEdit", a.id)}>
+                          <Pencil size={14} /> Editar
+                        </button>
+                        {card && cents(debt) > 0n && (
+                          <button className="text-button" type="button" onClick={() => payCard(a.id)}>
+                            <ArrowRightLeft size={14} /> Registrar pagamento da fatura
+                          </button>
+                        )}
                       </div>
                     </section>
-                  ))}
+                  );})}
                 </div>
               ) : (
                 <section className="panel">
@@ -1972,6 +2024,7 @@ export default function FinanceApp() {
               <div className="settings-grid">
                 <BackupPanel/>
                 <InvitePanel/>
+                <CategoryPanel custom={data.categories} act={act}/>
                 <section className="panel settings-card">
                   <ShieldCheck size={26} />
                   <h2>Sobre esta instalação</h2>
@@ -2125,14 +2178,25 @@ export default function FinanceApp() {
                     />
                   </Field>
                   <Field label="Tipo">
-                    <select name="type">
+                    <select
+                      name="type"
+                      value={accountType}
+                      onChange={(e) => setAccountType(e.target.value)}
+                    >
                       <option value="checking">Conta corrente</option>
                       <option value="savings">Poupança</option>
                       <option value="cash">Dinheiro</option>
                       <option value="investment">Investimento</option>
+                      <option value="credit_card">Cartão de crédito</option>
                     </select>
                   </Field>
-                  <Field label="Saldo inicial (R$)">
+                  <Field
+                    label={
+                      accountType === "credit_card"
+                        ? "Fatura já em aberto (R$, negativo)"
+                        : "Saldo inicial (R$)"
+                    }
+                  >
                     <Amount
                       name="opening_balance"
                       defaultValue="0,00"
@@ -2149,12 +2213,33 @@ export default function FinanceApp() {
                     />
                   </Field>
                 </div>
+                {accountType === "credit_card" && <CardFields />}
                 <p className="form-help">
-                  Use o saldo no início do dia, antes dos movimentos que serão
-                  registrados nessa data.
+                  {accountType === "credit_card"
+                    ? "Compras entram como despesas do cartão. O pagamento da fatura é uma transferência da sua conta para o cartão, para não contar o mesmo gasto duas vezes. Compras anteriores à data de referência não podem ser lançadas neste cartão."
+                    : "Use o saldo no início do dia, antes dos movimentos que serão registrados nessa data."}
                 </p>
               </>
             )}
+            {modal === "accountEdit" &&
+              (() => {
+                const a = data.accounts.find((x) => x.id === target);
+                if (!a) return null;
+                return (
+                  <>
+                    <Field label={isCard(a) ? "Nome do cartão" : "Nome da conta"}>
+                      <input name="name" required maxLength={120} defaultValue={a.name} />
+                    </Field>
+                    <Field label="Instituição">
+                      <input name="institution" maxLength={120} defaultValue={a.institution} />
+                    </Field>
+                    {isCard(a) && <CardFields values={a} />}
+                    <p className="form-help">
+                      Saldo inicial e data de referência não mudam aqui, para preservar o histórico.
+                    </p>
+                  </>
+                );
+              })()}
             {modal === "movement" && (
               <>
                 <Field label="Tipo de movimento">
@@ -2192,7 +2277,7 @@ export default function FinanceApp() {
                   </Field>
                   {kind === "transfer" ? (
                     <Field label="Conta de destino">
-                      <select name="destination_account_id" required>
+                      <select name="destination_account_id" required defaultValue={transferTo} key={transferTo}>
                         <option value="">Selecione</option>
                         {options}
                       </select>

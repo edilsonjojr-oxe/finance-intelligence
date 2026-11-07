@@ -21,6 +21,7 @@ import type {
 } from "../lib/types";
 import { parseImport } from "./imports";
 import { contractDetailsSchema, financialDescription } from "../lib/intake";
+import { buildMemory, suggestCategory, UNCATEGORIZED } from "../lib/categorize";
 const id = z.string().uuid();
 const text = z.string().trim().min(1).max(300);
 const money = z
@@ -29,6 +30,30 @@ const money = z
   .refine((v) => cents(v) > 0n, "O valor deve ser positivo.");
 const date = z.string().refine(validDate, "Data inválida.");
 const category = z.string().trim().min(1).max(80);
+const optionalText = (max: number) =>
+  z.string().trim().max(max).optional().transform((v) => v || undefined);
+const optionalDay = z
+  .union([z.coerce.number().int().min(1).max(31), z.literal("")])
+  .optional()
+  .transform((v) => (v === "" || v === undefined ? undefined : v));
+const cardFields = {
+  card_brand: optionalText(40),
+  card_holder: optionalText(80),
+  card_last4: z
+    .string()
+    .trim()
+    .regex(/^(\d{4})?$/, "Informe os 4 últimos dígitos.")
+    .optional()
+    .transform((v) => v || undefined),
+  closing_day: optionalDay,
+  due_day: optionalDay,
+  credit_limit: z
+    .string()
+    .trim()
+    .regex(/^(\d{1,11}(\.\d{1,2})?)?$/, "Limite inválido.")
+    .optional()
+    .transform((v) => v || undefined),
+};
 const movementSchema = z.object({
   account_id: id,
   destination_account_id: id.optional(),
@@ -114,7 +139,7 @@ export async function getFinance(user: string): Promise<FinanceState> {
     await (await import("./intake")).cleanupDrafts(db,user);
     const accounts = (
       await db.query<Account>(
-        "SELECT id,name,institution,type,opening_balance::text,opening_date::text FROM accounts WHERE user_id=$1 ORDER BY created_at",
+        "SELECT id,name,institution,type,opening_balance::text,opening_date::text,card_brand,card_holder,card_last4,closing_day,due_day,credit_limit::text FROM accounts WHERE user_id=$1 ORDER BY created_at",
         [user],
       )
     ).rows;
@@ -157,8 +182,15 @@ export async function getFinance(user: string): Promise<FinanceState> {
         [user],
       )
     ).rows;
+    const categories = (
+      await db.query<{ name: string }>(
+        "SELECT name FROM categories WHERE user_id=$1 ORDER BY name",
+        [user],
+      )
+    ).rows.map((r) => r.name);
     const today = localToday();
     return {
+      categories,
       accounts: accounts.map((a) => ({
         ...a,
         balance: balanceFor(a, transactions, today),
@@ -203,8 +235,8 @@ export async function financeAction(
       const v = z
         .object({
           name: text,
-          institution: z.string().trim().max(120),
-          type: z.enum(["checking", "savings", "cash", "investment"]),
+          institution: z.string().trim().max(120).default(""),
+          type: z.enum(["checking", "savings", "cash", "investment", "credit_card"]),
           opening_balance: z.string().refine((v) => {
             try {
               cents(v);
@@ -214,13 +246,15 @@ export async function financeAction(
             }
           }, "Saldo inválido."),
           opening_date: date,
+          ...cardFields,
         })
         .parse(payload);
       if (v.opening_date > localToday())
         throw new AppError("A data do saldo inicial não pode ser futura.");
+      const card = v.type === "credit_card";
       const key = randomUUID();
       await db.query(
-        "INSERT INTO accounts(id,user_id,name,institution,type,opening_balance,opening_date) VALUES($1,$2,$3,$4,$5,$6,$7)",
+        "INSERT INTO accounts(id,user_id,name,institution,type,opening_balance,opening_date,card_brand,card_holder,card_last4,closing_day,due_day,credit_limit) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
         [
           key,
           user,
@@ -229,10 +263,54 @@ export async function financeAction(
           v.type,
           v.opening_balance,
           v.opening_date,
+          card ? v.card_brand || null : null,
+          card ? v.card_holder || null : null,
+          card ? v.card_last4 || null : null,
+          card ? v.closing_day ?? null : null,
+          card ? v.due_day ?? null : null,
+          card ? v.credit_limit || null : null,
         ],
       );
-      await audit(db, user, action, key);
+      await audit(db, user, action, key, { type: v.type });
       return { id: key };
+    }
+    if (action === "account.update") {
+      // Nome e dados descritivos; saldo inicial e data de referência não mudam aqui.
+      const v = z.object({ id, name: text, institution: z.string().trim().max(120).default(""), ...cardFields }).parse(payload);
+      const current = await db.query<{ type: string }>("SELECT type FROM accounts WHERE id=$1 AND user_id=$2 FOR UPDATE", [v.id, user]);
+      if (!current.rows[0]) throw new AppError("Conta não encontrada.", 404);
+      const card = current.rows[0].type === "credit_card";
+      await db.query(
+        "UPDATE accounts SET name=$1,institution=$2,card_brand=$3,card_holder=$4,card_last4=$5,closing_day=$6,due_day=$7,credit_limit=$8 WHERE id=$9 AND user_id=$10",
+        [
+          v.name,
+          v.institution,
+          card ? v.card_brand || null : null,
+          card ? v.card_holder || null : null,
+          card ? v.card_last4 || null : null,
+          card ? v.closing_day ?? null : null,
+          card ? v.due_day ?? null : null,
+          card ? v.credit_limit || null : null,
+          v.id,
+          user,
+        ],
+      );
+      await audit(db, user, action, v.id);
+      return { id: v.id };
+    }
+    if (action === "category.create") {
+      const v = z.object({ name: category }).parse(payload);
+      if (v.name.toLowerCase() === "transferência interna") throw new AppError("Nome reservado.");
+      await db.query("INSERT INTO categories(user_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING", [user, v.name]);
+      await audit(db, user, action, user, { name: v.name });
+      return { id: v.name, name: v.name };
+    }
+    if (action === "category.delete") {
+      // Remove só da lista; lançamentos antigos mantêm o nome que já tinham.
+      const v = z.object({ name: category }).parse(payload);
+      await db.query("DELETE FROM categories WHERE user_id=$1 AND name=$2", [user, v.name]);
+      await audit(db, user, action, user, { name: v.name });
+      return { id: v.name, name: v.name };
     }
     if (action === "movement.create")
       return {
@@ -414,6 +492,16 @@ export async function financeAction(
         .parse(payload);
       await ownedAccount(db, user, v.account_id);
       const rows = parseImport(v.content, v.format);
+      // Categoria sugerida: memória dos lançamentos do usuário, depois regras.
+      const memory = buildMemory(
+        (await db.query<{ description: string; category: string; date: string; status: string }>(
+          "SELECT description,category,date::text,status FROM transactions WHERE user_id=$1 AND kind<>'transfer'",
+          [user],
+        )).rows,
+      );
+      for (const r of rows)
+        if (!r.category || r.category === UNCATEGORIZED)
+          r.category = suggestCategory(r.description, r.kind, memory);
       const key = randomUUID();
       await db.query(
         "INSERT INTO import_batches(id,user_id,account_id,filename,file_hash,format) VALUES($1,$2,$3,$4,$5,$6)",

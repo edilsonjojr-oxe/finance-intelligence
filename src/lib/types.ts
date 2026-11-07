@@ -6,6 +6,12 @@ export type Account = {
   opening_balance: string;
   opening_date: string;
   balance: string;
+  card_brand?: string | null;
+  card_holder?: string | null;
+  card_last4?: string | null;
+  closing_day?: number | null;
+  due_day?: number | null;
+  credit_limit?: string | null;
 };
 export type Movement = {
   id: string;
@@ -86,4 +92,6 @@ export type FinanceState = {
   }[];
   today: string;
   storage: "local" | "postgres";
+  /** Categorias criadas pelo usuário (as prontas ficam em lib/categorize). */
+  categories: string[];
 };

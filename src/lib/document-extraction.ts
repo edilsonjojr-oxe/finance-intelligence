@@ -82,6 +82,37 @@ export function extractCardInvoice(text:string,event:'paid'|'charged'|'predicted
   }
   return rows.slice(0,300);
 }
+export type CardMeta={issuer:string;brand:string;holder:string;last4:string;due_date:string;total:string;due_day:string};
+const issuers:[string,RegExp][]=[
+  ['Banco do Brasil',/banco do brasil|ourocard|\bbb\b cart|\bbb\b visa|\bbb\b master/],['Itaú',/\bitau\b|itaucard/],['Bradesco',/bradesco|bradescard/],
+  ['Santander',/santander/],['Caixa',/caixa economica|\bcaixa\b/],['Nubank',/nubank|nu pagamentos/],['Inter',/banco inter|\binter\b/],
+  ['C6 Bank',/\bc6\b/],['Banrisul',/banrisul/],['Sicredi',/sicredi/],['Sicoob',/sicoob/],['BTG',/\bbtg\b/],['XP',/\bxp\b (?:visa|cart)|banco xp/],
+  ['Porto Bank',/porto seguro|porto bank/],['Mercado Pago',/mercado pago/],['PicPay',/picpay/],['Neon',/\bneon\b/],['Will Bank',/will bank/],
+  ['Credicard',/credicard/],['Pan',/banco pan/],['Original',/banco original/],['Next',/\bnext\b/],['Renner',/meu cartao renner|cartao renner/],
+];
+const brands:[string,RegExp][]=[['Mastercard',/mastercard|\bmaster\b/],['Visa',/\bvisa\b/],['Elo',/\belo\b/],['American Express',/american express|\bamex\b/],['Hipercard',/hipercard/]];
+const titleCase=(s:string)=>s.toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());
+/** Dados do cartão na fatura. Campos não encontrados ficam vazios para o usuário completar. */
+export function extractCardMeta(text:string):CardMeta {
+  const flat=normalize(text);
+  const issuer=issuers.find(([,p])=>p.test(flat))?.[0]||'';
+  const brand=brands.find(([,p])=>p.test(flat))?.[0]||'';
+  const last4=flat.match(/(?:final|terminad[oa] em|cartao n[ºo.]*|n[ºo.] do cartao)[^\d]{0,12}(\d{4})\b/)?.[1]
+    ||flat.match(/(?:[*x•]{4}[\s.-]*){1,3}(\d{4})\b/)?.[1]||flat.match(/\b\d{4}[\s.]+[*x•]{4}[\s.]+[*x•]{4}[\s.]+(\d{4})\b/)?.[1]||'';
+  const holderLine=text.split(/\r?\n/).map(l=>l.trim()).find(l=>/^(titular|nome do titular|portador|cliente|nome)\s*[:-]/i.test(normalize(l)));
+  let holder=holderLine?holderLine.replace(/^[^:-]+[:-]\s*/,''):'';
+  if(!holder){const m=text.match(/^\s*([A-ZÀ-Ú][A-ZÀ-Ú ]{5,60}?)\s*[-–]?\s*(?:final|cart[aã]o)\s*[^\d]{0,6}\d{4}/m);if(m)holder=m[1];}
+  holder=titleCase(holder.replace(/[^A-Za-zÀ-ÿ\s]/g,' ').replace(/\s+/g,' ').trim()).slice(0,80);
+  const ref=flat.match(/vencimento[^\d]{0,40}(\d{2}\/\d{2}\/\d{4})/)?.[1]||'';
+  const due_date=ref?normalizedDate(ref):'';
+  const totalRaw=flat.match(/total (?:desta fatura|da fatura|a pagar|da sua fatura)[^\d-]{0,20}(-?\s*(?:r\$\s*)?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2})/)?.[1];
+  return {issuer,brand,holder,last4,due_date,total:totalRaw?monetary(totalRaw):'',due_day:due_date?String(Number(due_date.slice(8,10))):''};
+}
+/** Nome sugerido para o cartão; o usuário pode trocar. */
+export function defaultCardName(m:Pick<CardMeta,'issuer'|'brand'|'holder'|'last4'>) {
+  const first=m.holder.split(' ')[0]||'';
+  return [m.issuer||'Cartão',m.brand,first,m.last4?`•${m.last4}`:''].filter(Boolean).join(' ').slice(0,120);
+}
 export function extractContract(text:string):Record<string,string> {
   const money=(labels:string[])=>{const v=lineValue(text,labels).match(moneyPattern)?.[0];return v?monetary(v):'';};
   const date=(labels:string[])=>normalizedDate(lineValue(text,labels).match(datePattern)?.[0]||'');

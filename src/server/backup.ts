@@ -3,7 +3,9 @@ import { promisify } from 'node:util';
 import { transaction,type DB } from './db';
 import { AppError } from './auth';
 const scrypt=promisify(derive);
-export const backupTables=['users','accounts','transactions','contracts','obligations','import_batches','source_events','audit_events'] as const;
+export const backupTables=['users','accounts','transactions','contracts','obligations','import_batches','source_events','audit_events','categories'] as const;
+// Tabelas acrescentadas depois da v2: backups antigos sem elas continuam restauráveis.
+const optionalBackupTables=new Set<string>(['categories']);
 export type Snapshot={version:2;created_at:string;tables:Record<string,Record<string,unknown>[]>};
 export async function collectSnapshot(db:DB,user:string):Promise<Snapshot> {
   const tables:Snapshot['tables']={};
@@ -44,7 +46,7 @@ export async function restoreSnapshot(db:DB,snapshot:Snapshot) {
   if(existing.rows.length)throw new Error('Restauração permitida somente em uma base vazia.');
   const owner=snapshot.tables.users[0].id;
   for(const table of backupTables) {
-    const rows=snapshot.tables[table];if(!Array.isArray(rows))throw new Error('Tabela ausente no backup.');
+    const rows=snapshot.tables[table];if(!Array.isArray(rows)){if(optionalBackupTables.has(table))continue;throw new Error('Tabela ausente no backup.');}
     const columns=(await db.query<{column_name:string}>('SELECT column_name FROM information_schema.columns WHERE table_schema=\'public\' AND table_name=$1',[table])).rows.map(c=>c.column_name);
     for(const row of rows) {
       if((table==='users'?row.id:row.user_id)!==owner)throw new Error('Proprietário incompatível no backup.');

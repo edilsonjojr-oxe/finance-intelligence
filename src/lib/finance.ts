@@ -20,6 +20,18 @@ export function balanceFor(
   }
   return decimal(balance);
 }
+export const isCard = (a: Pick<Account, "type">) => a.type === "credit_card";
+/** Próxima data com o dia de vencimento (hoje incluso); dia 31 vira o último dia do mês. */
+export function nextDueDate(today: string, dueDay: number) {
+  const [y, m, d] = today.split("-").map(Number);
+  const build = (year: number, month: number) => {
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return `${year}-${String(month).padStart(2, "0")}-${String(Math.min(dueDay, last)).padStart(2, "0")}`;
+  };
+  const thisMonth = build(y, m);
+  if (Math.min(dueDay, new Date(Date.UTC(y, m, 0)).getUTCDate()) >= d) return thisMonth;
+  return m === 12 ? build(y + 1, 1) : build(y, m + 1);
+}
 export function totals(transactions: Movement[], month: string) {
   let income = 0n,
     expense = 0n;
@@ -46,7 +58,14 @@ export function forecast(
   days = 30,
   includeEstimates = false,
 ): ForecastPoint[] {
-  let balance = accounts.reduce((sum, a) => sum + cents(a.balance), 0n);
+  // Dinheiro disponível = contas que não são cartão. A dívida de cada cartão entra como
+  // saída no próximo vencimento (pagamento da fatura), em vez de reduzir o saldo hoje.
+  let balance = accounts
+    .filter((a) => !isCard(a))
+    .reduce((sum, a) => sum + cents(a.balance), 0n);
+  const cardBills = accounts
+    .filter((a) => isCard(a) && cents(a.balance) < 0n)
+    .map((a) => ({ date: a.due_day ? nextDueDate(today, a.due_day) : today, amount: -cents(a.balance) }));
   const result: ForecastPoint[] = [];
   for (let day = 0; day < days; day++) {
     const date = addDays(today, day);
@@ -59,9 +78,11 @@ export function forecast(
     const income = due
       .filter((o) => o.kind === "income")
       .reduce((n, o) => n + cents(o.amount), 0n);
-    const expense = due
-      .filter((o) => o.kind === "expense")
-      .reduce((n, o) => n + cents(o.amount), 0n);
+    const expense =
+      due
+        .filter((o) => o.kind === "expense")
+        .reduce((n, o) => n + cents(o.amount), 0n) +
+      cardBills.filter((b) => b.date === date).reduce((n, b) => n + b.amount, 0n);
     balance += income - expense;
     result.push({
       date,

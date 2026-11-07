@@ -2134,3 +2134,88 @@ dd {
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* Fatura de cartão identificada na leitura */
+.invoice-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.invoice-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  color: var(--green-dark);
+}
+.field small.suggested {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #16756514;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 600;
+}
+.account-card .card-holder {
+  margin-top: -6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.account-card .row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 12px;
+}
+
+/* Categorias */
+.category-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.category-add .field {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+}
+.chip-list.muted .chip {
+  color: var(--muted);
+}
+.chip button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.chip button:hover {
+  color: var(--red);
+}

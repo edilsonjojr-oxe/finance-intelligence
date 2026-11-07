@@ -18,7 +18,8 @@
     "prebuild": "npm run assets:documents",
     "backup:restore": "tsx scripts/restore-backup.ts",
     "start:cloud": "node scripts/start-cloud.mjs",
-    "test:multiuser": "tsx tests/multiuser.ts"
+    "test:multiuser": "tsx tests/multiuser.ts",
+    "test:cards": "tsx tests/cards.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
