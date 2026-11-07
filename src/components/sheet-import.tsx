@@ -6,6 +6,7 @@ import { addDays, brl, cents, decimal } from '@/lib/money';
 import { analyzeWorkbook, type MonthlyItem, type ScheduleBlock, type RecurringItem, type Cell } from '@/lib/spreadsheet-import';
 import { buildMemory, suggestCategory, UNCATEGORIZED } from '@/lib/categorize';
 import { accountLabel } from './card-fields';
+import Hint from './hint';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 type M = MonthlyItem & { selected: boolean; category: string };
@@ -80,7 +81,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
     <section className="panel sheet-import">
       <div className="panel-heading"><div><h2><FileSpreadsheet size={18} /> Importar planilha (Excel)</h2><p>Contas do mês, empréstimos, acordos e gastos fixos · .xlsx até 8 MB</p></div></div>
       <div className="padded-form">
-        <p className="form-help">A planilha é lida no seu navegador e não é enviada nem guardada. Você revisa tudo e só entra o que marcar. Reimportar a mesma planilha não duplica.</p>
+        <Hint short="Lida no seu aparelho. Só entra o que você marcar.">A planilha não é enviada nem guardada. Reimportar a mesma planilha não duplica nada.</Hint>
         <label className="field"><span>Planilha .xlsx</span><input type="file" accept=".xlsx" disabled={busy} onChange={(e) => e.target.files?.[0] && read(e.target.files[0])} /></label>
         {busy && <p role="status" className="page-footnote">Processando…</p>}
         {info && <p role="status" className="page-footnote">{info}</p>}
@@ -88,7 +89,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
         {loaded && (
           <>
             {monthly.length > 0 && (
-              <details open className="import-section">
+              <details className="import-section">
                 <summary><strong>Contas mensais</strong> · {selM.length} de {monthly.length} marcadas · {brl(decimal(sumOf(selM)))}</summary>
                 <div className="form-grid">
                   <label className="field"><span>Contas marcadas como PAGO</span>
@@ -99,7 +100,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
                   </label>
                   {paidMode === 'account' && <label className="field"><span>Conta dos pagamentos</span><select value={account} onChange={(e) => setAccount(e.target.value)} required><option value="">Selecione</option>{data.accounts.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}</select><small>Datas anteriores ao início da conta ficam como histórico.</small></label>}
                 </div>
-                <p className="form-help">Contas pendentes com mais de 45 dias vêm desmarcadas (provavelmente já resolvidas). Linhas sem valor não entram.</p>
+                <Hint short="Pendentes antigas vêm desmarcadas.">Contas pendentes com mais de 45 dias vêm desmarcadas (provavelmente já resolvidas). Linhas sem valor não entram.</Hint>
                 {sheets.map((sheet) => {
                   const items = monthly.filter((m) => m.sheet === sheet);
                   const all = items.every((m) => m.selected || !m.amount);
@@ -149,7 +150,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
             {recurring.length > 0 && (
               <details open className="import-section">
                 <summary><strong>Gastos fixos e assinaturas</strong> · {selR.length} de {recurring.length} · {brl(decimal(sumOf(selR)))}/mês</summary>
-                <p className="form-help">Viram compromissos mensais pelos próximos 12 meses, a partir do próximo vencimento.</p>
+                <Hint short="Viram compromissos dos próximos 12 meses." />
                 {recurring.map((x) => (
                   <div key={x.key} className={`import-row ${x.selected ? '' : 'off'}`}>
                     <input type="checkbox" aria-label={`Importar ${x.description}`} checked={x.selected} onChange={(e) => setR(x.key, { selected: e.target.checked })} />

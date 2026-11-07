@@ -143,7 +143,7 @@ export default function LoansPage({ data, act, onPay }: { data: FinanceState; ac
         <div className="row-actions"><button className="button primary" onClick={() => setCreating(true)}><Plus size={16} /> Novo empréstimo ou acordo</button></div>
       )}
       {loans.length === 0 && !creating && (
-        <section className="panel padded-form"><p className="form-help"><HandCoins size={16} /> Cadastre aqui empréstimos com pessoas ou bancos e acordos de dívida, informando o valor total e as parcelas. Também é possível importá-los da sua planilha em Importações.</p></section>
+        <section className="panel padded-form"><p className="form-help"><HandCoins size={16} /> Nenhum empréstimo ainda. Cadastre ou importe da planilha em Importações.</p></section>
       )}
       <div className="loan-list">
         {loans.map((c) => {

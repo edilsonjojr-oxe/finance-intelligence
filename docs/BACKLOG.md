@@ -19,9 +19,9 @@ Legenda: [x] feito · [ ] pendente · [-] fora do escopo por decisão do usuári
 - [x] 1.4 Recuperar senha — pendente de serviço de e-mail (só registrar no ROADMAP)
 
 ## 2. Telas mais enxutas
-- [ ] 2.1 Textos de ajuda curtos; explicações em "Saiba mais" (Importações, fatura, planilha, Empréstimos)
-- [ ] 2.2 Planilha: resumo primeiro, detalhe por aba recolhido
-- [ ] 2.3 Revisão mobile (espaçamentos, botões, tabelas com rolagem)
+- [x] 2.1 Textos de ajuda curtos; explicações em "Saiba mais" (Importações, fatura, planilha, Empréstimos)
+- [x] 2.2 Planilha: resumo primeiro, detalhe por aba recolhido
+- [ ] 2.3 Revisão mobile — PRÓXIMO: em Lançamentos e Visão geral a <table> (1078px) dentro de .table-scroll faz a página rolar para o lado no celular (scrollWidth 1026 em 375px); demais páginas OK
 
 ## 3. Cartões completos (Fase D)
 - [ ] 3.1 Fechamento: compras após o fechamento vão para a próxima fatura; fatura atual × próxima

@@ -32,12 +32,7 @@ export default function CategoryPanel({ custom, act }: { custom: string[]; act: 
   return (
     <section className="panel settings-card">
       <h2>Categorias</h2>
-      <p>
-        As categorias têm grupo e subcategoria, como <em>Alimentação / Mercado</em> e{' '}
-        <em>Alimentação / Delivery</em>. O sistema sugere a de cada gasto e aprende com as suas
-        correções. Em Lançamentos, toque na categoria para trocar ou dividir uma compra entre
-        várias.
-      </p>
+      <p>Grupo e subcategoria, como <em>Alimentação / Delivery</em>. O app sugere e aprende com as suas correções.</p>
       <form onSubmit={add} className="category-add">
         <label className="field">
           <span>Grupo</span>

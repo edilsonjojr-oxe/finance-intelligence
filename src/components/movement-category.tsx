@@ -65,7 +65,7 @@ export default function MovementCategoryEditor({ movement: t, splits, act, onClo
         </label>
       ) : (
         <>
-          <p className="form-help">Ex.: compra no mercado de R$ 300 → R$ 240 em Alimentação / Mercado e R$ 60 em Casa / Cama, mesa e banho. O lançamento continua um só; os relatórios usam as partes.</p>
+          <p className="form-help">Ex.: mercado R$ 300 = R$ 240 Mercado + R$ 60 Cama, mesa e banho.</p>
           {parts.map((p, i) => (
             <fieldset className="split-row" key={i}>
               <legend>Parte {i + 1}</legend>

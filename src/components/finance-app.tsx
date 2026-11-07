@@ -1437,11 +1437,7 @@ export default function FinanceApp() {
             <>
               <div className="info-strip">
                 <ShieldCheck size={18} />
-                <p>
-                  Informe o saldo no início da data de referência. Os
-                  lançamentos dessa data em diante entram no cálculo. Estes
-                  saldos ainda não foram conciliados com um extrato.
-                </p>
+                <p>Saldo calculado a partir do saldo inicial e dos lançamentos.</p>
               </div>
               {data.accounts.length ? (
                 <div className="account-grid">
@@ -1618,11 +1614,7 @@ export default function FinanceApp() {
             <>
               <div className="info-strip">
                 <FileText size={18} />
-                <p>
-                  Cadastre as condições revisadas do contrato. Serão gerados
-                  vencimentos mensais pelo valor informado. Reajustes são apenas
-                  anotações nesta etapa.
-                </p>
+                <p>Cada contrato gera os vencimentos mensais. Reajustes ficam como anotação.</p>
               </div>
               {data.contracts.length ? (
                 <div className="account-grid">
