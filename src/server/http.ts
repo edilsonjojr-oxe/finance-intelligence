@@ -17,9 +17,14 @@ export function errorResponse(error: unknown) {
       },
       { status: 400 },
     );
+  // Somente tipo, código e mensagem técnica (infraestrutura/SQL); nunca corpo, parâmetros
+  // ou o campo "detail" do PostgreSQL, que pode conter valores.
+  const code = (error as { code?: unknown })?.code;
   console.error(
     "Finance request failed:",
     error instanceof Error ? error.name : "Unknown error",
+    typeof code === "string" ? code : "",
+    error instanceof Error ? error.message.slice(0, 200) : "",
   );
   return NextResponse.json(
     {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { assertPersistentDatabase, databaseTLS, isHostedDeployment, secureCookies } from '../src/server/deployment-config';
+import { assertPersistentDatabase, databaseTLS, isHostedDeployment, normalizePEM, secureCookies } from '../src/server/deployment-config';
 
 const pem = '-----BEGIN CERTIFICATE-----\\nAAAA\\n-----END CERTIFICATE-----';
 describe('TLS do banco e cookies', () => {
@@ -8,6 +8,13 @@ describe('TLS do banco e cookies', () => {
     const tls = databaseTLS({ VERCEL: '1', DATABASE_CA_CERT: pem });
     expect(tls.rejectUnauthorized).toBe(true);
     expect(tls.ca).toContain('\n');
+  });
+  it('reconstrói PEM colado em uma linha, com espaços ou \\n literal', () => {
+    const body = 'A'.repeat(70);
+    const canonical = `-----BEGIN CERTIFICATE-----\n${'A'.repeat(64)}\nAAAAAA\n-----END CERTIFICATE-----\n`;
+    expect(normalizePEM(`-----BEGIN CERTIFICATE----- ${body.slice(0, 30)} ${body.slice(30)} -----END CERTIFICATE-----`)).toBe(canonical);
+    expect(normalizePEM(`-----BEGIN CERTIFICATE-----\\n${body}\\n-----END CERTIFICATE-----`)).toBe(canonical);
+    expect(normalizePEM(`-----BEGIN CERTIFICATE-----\r\n${body}\r\n-----END CERTIFICATE-----\r\n`)).toBe(canonical);
   });
   it('recusa CA que não é PEM', () => {
     expect(() => databaseTLS({ DATABASE_CA_CERT: 'texto qualquer' })).toThrow('PEM');
