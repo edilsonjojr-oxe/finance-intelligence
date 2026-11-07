@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedRequestOrigin } from "../src/server/request-origin";
+import { isAllowedRequestOrigin, platformOrigin } from "../src/server/request-origin";
 
 const requestUrl = "http://localhost:3000/api/auth";
 describe("Origem das gravações", () => {
@@ -97,6 +97,16 @@ describe("Origem das gravações", () => {
           configured,
         ),
       ).toBe(false);
+    }
+  });
+});
+
+describe("Domínio de produção da Vercel", () => {
+  it("usa VERCEL_PROJECT_PRODUCTION_URL somente na Vercel e com host válido", () => {
+    expect(platformOrigin({ VERCEL: "1", VERCEL_PROJECT_PRODUCTION_URL: "app-8onn.vercel.app" })).toBe("https://app-8onn.vercel.app");
+    expect(platformOrigin({ VERCEL_PROJECT_PRODUCTION_URL: "app.vercel.app" })).toBeNull();
+    for (const host of ["", "localhost", "app.vercel.app/path", "user@app.vercel.app", "app.vercel.app:3000"]) {
+      expect(platformOrigin({ VERCEL: "1", VERCEL_PROJECT_PRODUCTION_URL: host })).toBeNull();
     }
   });
 });

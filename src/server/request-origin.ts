@@ -1,6 +1,19 @@
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
+ * Domínio de produção informado pela própria Vercel (variável de sistema, não controlada
+ * pelo visitante). Aceito além de APP_ORIGIN para que um erro de digitação na configuração
+ * não bloqueie o acesso; previews e outros domínios continuam exigindo APP_ORIGIN.
+ */
+export function platformOrigin(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const host = env.VERCEL === "1" ? env.VERCEL_PROJECT_PRODUCTION_URL?.trim() : "";
+  if (!host || !/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(host)) return null;
+  return `https://${host.toLowerCase()}`;
+}
+
+/**
  * Produção pública exige APP_ORIGIN explícita. Sem configuração, apenas os
  * endereços locais conhecidos, no mesmo protocolo e porta, são autorizados.
  * Next.js pode reconstruir request.url com localhost ao receber 127.0.0.1.

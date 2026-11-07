@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { AppError } from "./auth";
-import { isAllowedRequestOrigin } from "./request-origin";
+import { isAllowedRequestOrigin, platformOrigin } from "./request-origin";
 export function errorResponse(error: unknown) {
   if (error instanceof AppError)
     return NextResponse.json(
@@ -36,8 +36,20 @@ export function errorResponse(error: unknown) {
 }
 export async function readBody(request: NextRequest) {
   const origin = request.headers.get("origin");
-  if (!isAllowedRequestOrigin(origin, request.url, process.env.APP_ORIGIN))
+  const platform = platformOrigin();
+  if (
+    !isAllowedRequestOrigin(origin, request.url, process.env.APP_ORIGIN) &&
+    !(platform && origin === platform)
+  ) {
+    // Origens e configuração não são segredos; ajudam a diagnosticar APP_ORIGIN incorreta.
+    console.warn(
+      "Origem recusada:",
+      (origin || "(ausente)").slice(0, 120),
+      "APP_ORIGIN:",
+      (process.env.APP_ORIGIN || "(não definida)").slice(0, 120),
+    );
     throw new AppError("Origem da solicitação não autorizada.", 403);
+  }
   if (!request.headers.get("content-type")?.includes("application/json"))
     throw new AppError("Envie JSON.", 415);
   const reader = request.body?.getReader();
