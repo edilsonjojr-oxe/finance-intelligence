@@ -12,6 +12,9 @@ function lineValue(text:string,labels:string[]) {
   return text.split(/\r?\n/).find(line=>labels.some(label=>normalize(line).startsWith(label)))?.split(/[:=]/).slice(1).join(':').trim()||'';
 }
 export function extractEntries(text:string,event:'paid'|'charged'|'predicted'='charged'):ExtractedItem[] {
+  // Fatura de cartão primeiro: a linha do vencimento tem data e valor e seria lida como um item.
+  const invoice=extractCardInvoice(text,event);
+  if(invoice.length) return invoice;
   const lines=text.split(/\r?\n/).filter(Boolean);
   const rows:ExtractedItem[]=[];
   // Somente linhas com data completa e valor em centavos. Nenhum ano/valor é inventado.
@@ -31,6 +34,53 @@ export function extractEntries(text:string,event:'paid'|'charged'|'predicted'='c
   return [{key:'summary',description:financialDescription(lineValue(text,['descricao','servico','beneficiario','estabelecimento'])),
     date:normalizedDate(dateLine.match(datePattern)?.[0]||''),amount:amount?monetary(amount):'',category:'Sem categoria',kind:'expense',
     event_type:/talvez|pretendo|hipotetic|se eu/i.test(normalize(text))?'estimated':event}];
+}
+const monthNumber:Record<string,number>={jan:1,fev:2,mar:3,abr:4,mai:5,jun:6,jul:7,ago:8,set:9,out:10,nov:11,dez:12};
+// Início de linha "15/10", "15.10", "15 OUT" ou "15/out" — sem ano (o ano completo já foi tratado acima).
+const shortDatePattern=/^\s*(\d{1,2})\s*[/.\s-]\s*(\d{1,2}|jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*\.?(?![/.]\d)(?=\s)/i;
+/** Mês/ano de referência da fatura: data de vencimento (ou a primeira data completa do texto). */
+export function invoiceReference(text:string) {
+  const flat=normalize(text);
+  const due=flat.match(/vencimento[^\d]{0,40}(\d{2}\/\d{2}\/\d{4})/)?.[1]||flat.match(/\b\d{2}\/\d{2}\/\d{4}\b/)?.[0];
+  const iso=due?normalizedDate(due):'';
+  return iso?{year:Number(iso.slice(0,4)),month:Number(iso.slice(5,7))}:null;
+}
+/**
+ * Itens de fatura de cartão. Exige texto com cara de fatura e data de vencimento para inferir o
+ * ano (compra em mês posterior ao vencimento pertence ao ano anterior). O pagamento da fatura
+ * anterior, saldos e totais são ignorados para não contar o mesmo dinheiro duas vezes.
+ */
+export function extractCardInvoice(text:string,event:'paid'|'charged'|'predicted'='charged'):ExtractedItem[] {
+  const flat=normalize(text);
+  if(!/fatura|cartao|limite (?:total|disponivel)|total (?:da fatura|a pagar)/.test(flat))return [];
+  const ref=invoiceReference(text);
+  if(!ref)return [];
+  const rows:ExtractedItem[]=[];
+  const lines=text.split(/\r?\n/);
+  for(let i=0;i<lines.length;i++) {
+    const line=lines[i];const plain=normalize(line);
+    const full=line.match(/^\s*(\d{2}\/\d{2}\/\d{4})(?=\s)/);
+    const d=full||line.match(shortDatePattern);if(!d)continue;
+    if(/pagamento (?:efetuado|recebido|de fatura|da fatura|minimo)|pgto|saldo (?:anterior|em aberto)|total|vencimento|limite|melhor dia/.test(plain))continue;
+    const amounts=[...line.matchAll(moneyPattern)];if(!amounts.length)continue;
+    let date='';
+    if(full) date=normalizedDate(full[1]);
+    else {
+      const day=Number(d[1]),month=/^\d+$/.test(d[2])?Number(d[2]):monthNumber[d[2].slice(0,3).toLowerCase()];
+      if(!month||month>12||day<1||day>31)continue;
+      const year=month>ref.month?ref.year-1:ref.year;
+      date=normalizedDate(`${String(day).padStart(2,'0')}/${String(month).padStart(2,'0')}/${year}`);
+    }
+    if(!date)continue;
+    // Com dólar e real na mesma linha, o valor em reais é o último.
+    const amount=amounts[amounts.length-1][0];
+    const credit=amount.trim().startsWith('-')||/-\s*$/.test(line.trim())||/estorno|credito|reembolso|cashback/.test(plain);
+    const description=financialDescription(line.slice(d[0].length)
+      .replace(moneyPattern,'').replace(/\b(?:R\$|US\$|USD|BRL)\b/gi,'').replace(/^[\s;|:-]+|[\s;|:-]+$/g,'').replace(/\s{2,}/g,' '));
+    rows.push({key:`card-${i+1}`,date,amount:monetary(amount),description,category:'Sem categoria',
+      kind:credit?'income':'expense',event_type:event});
+  }
+  return rows.slice(0,300);
 }
 export function extractContract(text:string):Record<string,string> {
   const money=(labels:string[])=>{const v=lineValue(text,labels).match(moneyPattern)?.[0];return v?monetary(v):'';};

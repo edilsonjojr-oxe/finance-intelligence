@@ -17,12 +17,11 @@
     "predev": "npm run assets:documents",
     "prebuild": "npm run assets:documents",
     "backup:restore": "tsx scripts/restore-backup.ts",
-    "start:cloud": "node scripts/start-cloud.mjs"
+    "start:cloud": "node scripts/start-cloud.mjs",
+    "test:multiuser": "tsx tests/multiuser.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
-    "@supabase/ssr": "0.12.7",
-    "@supabase/supabase-js": "2.119.0",
     "@tesseract.js-data/por": "^1.0.0",
     "csv-parse": "^7.0.3",
     "lucide-react": "^1.69.0",

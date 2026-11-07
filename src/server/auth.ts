@@ -1,12 +1,13 @@
 import {
   randomBytes,
+  randomInt,
   randomUUID,
   scrypt as scryptCallback,
   timingSafeEqual,
   createHash,
 } from "node:crypto";
 import { promisify } from "node:util";
-import { transaction } from "./db";
+import { transaction, type DB } from "./db";
 import { isHostedDeployment } from "./deployment-config";
 const scrypt = promisify(scryptCallback);
 export const sessionCookie = "fi_session";
@@ -33,13 +34,7 @@ export async function verifyPassword(password: string, encoded: string) {
     timingSafeEqual(result, Buffer.from(expected, "hex"))
   );
 }
-export function authProvider(): "local" | "supabase" {
-  const provider=process.env.AUTH_PROVIDER || "local";
-  if(provider!=="local" && provider!=="supabase")throw new AppError("Provedor de autenticação inválido.",503);
-  return provider;
-}
 export async function authStatus(token?: string) {
-  if(authProvider()==="supabase")return (await import("./supabase-auth")).supabaseAuthStatus();
   return transaction(null, async (db) => {
     const users = await db.query<{ count: string }>(
       "SELECT count(*)::text AS count FROM users",
@@ -51,7 +46,6 @@ export async function authStatus(token?: string) {
         )
       : { rows: [] };
     return {
-      provider: "local" as const,
       needsSetup: users.rows[0].count === "0",
       requiresSetupToken: !!process.env.SETUP_TOKEN || isHostedDeployment(),
       user: result.rows[0] || null,
@@ -63,45 +57,116 @@ export async function requireUser(token?: string) {
   if (!user) throw new AppError("Entre na sua conta para continuar.", 401);
   return user;
 }
-export async function authenticate(
-  mode: "setup" | "login",
-  email: string,
-  password: string,
-  name = "",
-  setupToken = '',
-) {
-  if(mode==='setup' && (process.env.SETUP_TOKEN || isHostedDeployment())) {
-    if(!process.env.SETUP_TOKEN || !timingSafeEqual(Buffer.from(hash(setupToken)),Buffer.from(hash(process.env.SETUP_TOKEN))))throw new AppError('Código de ativação inválido.',403);
-  }
-  // O limite global persiste e impede contornar bloqueio trocando o e-mail.
+
+// Códigos de convite: 12 caracteres sem ambiguidade (sem 0/O/1/I), exibidos em grupos de 4.
+const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const normalizeInvite = (code: string) =>
+  code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+export async function createInvite(userId: string) {
+  const code = Array.from({ length: 12 }, () => inviteAlphabet[randomInt(inviteAlphabet.length)]).join("");
+  return transaction(userId, async (db) => {
+    const recent = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM invites WHERE created_by=$1 AND created_at > now() - interval '1 day'",
+      [userId],
+    );
+    if (recent.rows[0].n >= 10)
+      throw new AppError("Limite de 10 convites por dia atingido.", 429);
+    const expires = await db.query<{ expires_at: string }>(
+      "INSERT INTO invites(code_hash,created_by,expires_at) VALUES($1,$2,now()+interval '7 days') RETURNING expires_at::text",
+      [hash(normalizeInvite(code)), userId],
+    );
+    await db.query(
+      "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'invite.created',NULL,'{}')",
+      [randomUUID(), userId],
+    );
+    return { code: code.match(/.{4}/g)!.join("-"), expires_at: expires.rows[0].expires_at };
+  });
+}
+
+/** Limite por e-mail (impede força bruta numa conta) e global (impede varrer e-mails). */
+async function rateLimit(email: string) {
   const allowed = await transaction(null, async (db) => {
-    await db.query(
-      "INSERT INTO login_attempts(key) VALUES('global') ON CONFLICT DO NOTHING",
-    );
-    await db.query(
-      "UPDATE login_attempts SET attempts=0,window_start=now() WHERE key='global' AND window_start < now() - interval '15 minutes'",
-    );
-    const r = await db.query<{ attempts: number }>(
-      "UPDATE login_attempts SET attempts=attempts+1 WHERE key='global' RETURNING attempts",
-    );
-    return r.rows[0].attempts <= 20;
+    const check = async (key: string, max: number) => {
+      await db.query("INSERT INTO login_attempts(key) VALUES($1) ON CONFLICT DO NOTHING", [key]);
+      await db.query(
+        "UPDATE login_attempts SET attempts=0,window_start=now() WHERE key=$1 AND window_start < now() - interval '15 minutes'",
+        [key],
+      );
+      const r = await db.query<{ attempts: number }>(
+        "UPDATE login_attempts SET attempts=attempts+1 WHERE key=$1 RETURNING attempts",
+        [key],
+      );
+      return r.rows[0].attempts <= max;
+    };
+    const perEmail = await check(`email:${hash(email)}`, 10);
+    const global = await check("global", 100);
+    return perEmail && global;
   });
   if (!allowed)
     throw new AppError("Muitas tentativas. Aguarde 15 minutos.", 429);
-  const encoded = mode === "setup" ? await passwordHash(password) : null;
+}
+function checkSetupToken(setupToken: string) {
+  if (process.env.SETUP_TOKEN || isHostedDeployment()) {
+    if (
+      !process.env.SETUP_TOKEN ||
+      !timingSafeEqual(Buffer.from(hash(setupToken)), Buffer.from(hash(process.env.SETUP_TOKEN)))
+    )
+      throw new AppError("Código de ativação inválido.", 403);
+  }
+}
+async function useInvite(db: DB, code: string) {
+  const invite = await db.query<{ created_by: string }>(
+    "SELECT created_by FROM invites WHERE code_hash=$1 AND used_by IS NULL AND expires_at > now() FOR UPDATE",
+    [hash(normalizeInvite(code))],
+  );
+  if (!invite.rows[0])
+    throw new AppError("Convite inválido, expirado ou já utilizado.", 403);
+  return invite.rows[0].created_by;
+}
+
+export async function authenticate(
+  mode: "setup" | "login" | "register",
+  email: string,
+  password: string,
+  name = "",
+  code = "",
+) {
+  email = email.trim().toLowerCase();
+  if (mode === "setup") checkSetupToken(code);
+  await rateLimit(email);
+  const encoded = mode === "login" ? null : await passwordHash(password);
   return transaction(null, async (db) => {
     await db.query("SELECT pg_advisory_xact_lock(7182361)");
-    if (mode === "setup") {
-      const existing = await db.query("SELECT id FROM users LIMIT 1");
-      if (existing.rows.length)
-        throw new AppError("O perfil já foi criado. Use Entrar.", 409);
+    if (mode === "setup" || mode === "register") {
+      const id = randomUUID();
+      if (mode === "setup") {
+        const existing = await db.query("SELECT id FROM users LIMIT 1");
+        if (existing.rows.length)
+          throw new AppError("O primeiro perfil já foi criado. Use Entrar ou um convite.", 409);
+      }
+      const inviter = mode === "register" ? await useInvite(db, code) : null;
+      const taken = await db.query("SELECT 1 FROM users WHERE lower(email)=lower($1)", [email]);
+      if (taken.rows.length)
+        throw new AppError("Este e-mail já tem acesso. Use Entrar.", 409);
       await db.query(
         "INSERT INTO users(id,name,email,password_hash) VALUES($1,$2,$3,$4)",
-        [randomUUID(), name, email, encoded],
+        [id, name, email, encoded],
       );
+      if (inviter) {
+        await db.query(
+          "UPDATE invites SET used_by=$1,used_at=now() WHERE code_hash=$2",
+          [id, hash(normalizeInvite(code))],
+        );
+        // A auditoria tem RLS por dono: identifica o novo usuário nesta transação.
+        await db.query("SELECT set_config('app.user_id',$1,true)", [id]);
+        await db.query(
+          "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'invite.accepted',NULL,'{}')",
+          [randomUUID(), id],
+        );
+      }
     }
     const result = await db.query<{ id: string; password_hash: string }>(
-      "SELECT id,password_hash FROM users WHERE email=$1",
+      "SELECT id,password_hash FROM users WHERE lower(email)=lower($1)",
       [email],
     );
     const user = result.rows[0];
@@ -117,7 +182,7 @@ export async function authenticate(
       "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '12 hours')",
       [hash(token), user.id],
     );
-    await db.query("UPDATE login_attempts SET attempts=0 WHERE key='global'");
+    await db.query("UPDATE login_attempts SET attempts=0 WHERE key=$1", [`email:${hash(email)}`]);
     return token;
   });
 }

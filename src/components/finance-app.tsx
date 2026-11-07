@@ -44,6 +44,7 @@ import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
 import CandidateEditor from "./candidate-editor";
 import BackupPanel from "./backup-panel";
+import InvitePanel from "./invite-panel";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -317,7 +318,9 @@ function Login({
   onDone: () => Promise<void>;
 }) {
   const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [registering, setRegistering] = useState(false);
+  const creating = needsSetup || registering;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -325,11 +328,12 @@ function Login({
     const form = new FormData(event.currentTarget);
     try {
       await request("/api/auth", {
-        action: needsSetup ? "setup" : "login",
+        action: needsSetup ? "setup" : registering ? "register" : "login",
         name: form.get("name") || undefined,
         email: form.get("email"),
         password: form.get("password"),
         setup_token: form.get("setup_token") || undefined,
+        invite_code: form.get("invite_code") || undefined,
       });
       await onDone();
     } catch (e) {
@@ -381,14 +385,44 @@ function Login({
       <section className="login-form">
         <div className="login-form-inner">
           <span className="eyebrow">SEU ESPAÇO FINANCEIRO</span>
-          <h2>{needsSetup ? "Vamos começar." : "Bom ter você de volta."}</h2>
+          <h2>
+            {needsSetup
+              ? "Vamos começar."
+              : registering
+                ? "Crie seu acesso."
+                : "Bom ter você de volta."}
+          </h2>
           <p>
             {needsSetup
               ? "Crie seu acesso pessoal para organizar sua vida financeira."
-              : "Entre para acompanhar suas contas e próximos compromissos."}
+              : registering
+                ? "Use o convite que você recebeu. Seus dados ficam separados dos de quem convidou."
+                : "Entre para acompanhar suas contas e próximos compromissos."}
           </p>
-          <form onSubmit={submit}>
-            {needsSetup && (
+          {!needsSetup && (
+            <div className="auth-switch" role="tablist" aria-label="Tipo de acesso">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!registering}
+                className={!registering ? "active" : ""}
+                onClick={() => { setRegistering(false); setError(""); }}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={registering}
+                className={registering ? "active" : ""}
+                onClick={() => { setRegistering(true); setError(""); }}
+              >
+                Tenho um convite
+              </button>
+            </div>
+          )}
+          <form onSubmit={submit} key={registering ? "register" : "login"}>
+            {creating && (
               <Field label="Como podemos chamar você?">
                 <input
                   name="name"
@@ -400,6 +434,20 @@ function Login({
               </Field>
             )}
             {needsSetup && requiresSetupToken && <Field label="Código de ativação"><input name="setup_token" type="password" autoComplete="off" required maxLength={200}/><small>Use o código privado configurado na instalação.</small></Field>}
+            {registering && !needsSetup && (
+              <Field label="Código de convite">
+                <input
+                  name="invite_code"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  required
+                  maxLength={40}
+                  placeholder="XXXX-XXXX-XXXX"
+                />
+                <small>Peça a quem já usa o sistema: Configurações → Convidar pessoa.</small>
+              </Field>
+            )}
             <Field label="E-mail">
               <input
                 name="email"
@@ -413,7 +461,7 @@ function Login({
               <input
                 name="password"
                 type="password"
-                autoComplete={needsSetup ? "new-password" : "current-password"}
+                autoComplete={creating ? "new-password" : "current-password"}
                 required
                 minLength={12}
                 maxLength={128}
@@ -428,7 +476,7 @@ function Login({
             <button className="button primary full" disabled={busy}>
               {busy
                 ? "Preparando seu espaço…"
-                : needsSetup
+                : creating
                   ? "Criar meu acesso"
                   : "Entrar na minha central"}
               <ArrowRight size={17} />
@@ -437,7 +485,7 @@ function Login({
           <div className="privacy-note">
             <ShieldCheck size={19} />
             <span>
-              Uso pessoal. Seus dados ficam nesta instalação. Não há conexão
+              Cada pessoa vê apenas os próprios dados. Não há conexão
               automática com bancos ou e-mails.
             </span>
           </div>
@@ -1923,6 +1971,7 @@ export default function FinanceApp() {
             <>
               <div className="settings-grid">
                 <BackupPanel/>
+                <InvitePanel/>
                 <section className="panel settings-card">
                   <ShieldCheck size={26} />
                   <h2>Sobre esta instalação</h2>
