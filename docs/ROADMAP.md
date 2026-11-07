@@ -19,7 +19,7 @@ ajusta a estrutura. Documentos originais não são guardados; somente o que o us
 
 ## Próximas fases
 
-### Fase A — Importar planilha no app (.xlsx/.csv)
+### Fase A — Importar planilha no app (.xlsx) — feito (7 nov), melhorias futuras
 Assistente em Importações: escolher o arquivo, o app reconhece os formatos e mostra tudo para
 revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de gravar.
 - Abas mensais "Descrição · Valor · Vencimento · Pagamento · Status · Observação" → compromissos
@@ -30,7 +30,7 @@ revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de grava
   vinculados ao cartão.
 - Itens repetidos entre meses (Netflix, aluguel) agrupados; reimportar não duplica.
 
-### Fase B — Empréstimos e acordos no app
+### Fase B — Empréstimos e acordos no app — feito (7 nov), melhorias futuras
 - "Peguei emprestado" ou "Emprestei", com pessoa/instituição, **valor total, nº de parcelas,
   dia do mês** (o app divide e gera as parcelas) ou valores parcela a parcela.
 - Ler o print/foto com os valores (OCR) ou digitar manualmente.
@@ -60,6 +60,18 @@ revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de grava
 ### Fase G — Conta e segurança
 - Recuperação de senha por e-mail, MFA, encerrar sessões em outros aparelhos.
 - Infra: "Enforce SSL" no Supabase, APP_ORIGIN definitivo, backups automáticos.
+
+### Fase I — App instalável (PWA)
+- Manifest, ícones, apple-touch-icon, service worker mínimo sem cache de dados, card
+  "Instalar app" em Configurações; avaliar sessão de 12h no app instalado.
+
+### Fase J — Despesas compartilhadas (Etapa 1)
+- Conexões entre usuários, grupo permanente (ex.: Casa), despesa dividida (igual, selecionados,
+  valores exatos, %), parte de cada um lançada no próprio ledger sem dupla contagem, acerto.
+- Plano contábil a aprovar antes de implementar.
+
+### Fase K — Grupos de divisão (Etapa 2)
+- Viagem/Evento, convite por link, conta "só divisão", simplificar dívidas, feed, CSV.
 
 ### Fase H — Depois
 - Consultor IA sobre os dados estruturados (perguntas, simulações), com cálculos verificáveis e
