@@ -7,7 +7,11 @@ import { cents } from '../lib/money';
 import type { Obligation,Movement } from '../lib/types';
 export async function recordIntakeItem(db:DB,user:string,item:IntakeItem,source:{type:string;hash:string;account?:string;fingerprint?:string}) {
   const fingerprint=source.fingerprint||hash(`${source.type}:${source.hash}:${item.key}`);
-  const seen=await db.query('SELECT id FROM source_events WHERE user_id=$1 AND fingerprint=$2',[user,fingerprint]);
+  // Identificadores de extrato (CSV/OFX) são únicos dentro da conta, não no perfil:
+  // o movimento mantém a impressão original (única por conta em transactions) e o
+  // evento de origem recebe uma impressão escopada pela conta.
+  const eventFingerprint=source.fingerprint&&source.account?hash(`account:${source.account}:${source.fingerprint}`):fingerprint;
+  const seen=await db.query('SELECT id FROM source_events WHERE user_id=$1 AND fingerprint=$2',[user,eventFingerprint]);
   if(seen.rows.length)return {duplicate:true};
   const sourceId=randomUUID();let obligationId=item.obligation_id||null,transactionId=item.transaction_id||null;
   let obligation:Obligation|undefined;
@@ -53,7 +57,7 @@ export async function recordIntakeItem(db:DB,user:string,item:IntakeItem,source:
       await db.query("UPDATE obligations SET stage='predicted' WHERE id=$1 AND user_id=$2 AND stage='estimated'",[obligationId,user]);
     }
   }
-  await db.query('INSERT INTO source_events(id,user_id,source_type,fingerprint,source_hash,event_type,obligation_id,transaction_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[sourceId,user,source.type,fingerprint,source.hash,item.event_type,obligationId,transactionId]);
+  await db.query('INSERT INTO source_events(id,user_id,source_type,fingerprint,source_hash,event_type,obligation_id,transaction_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',[sourceId,user,source.type,eventFingerprint,source.hash,item.event_type,obligationId,transactionId]);
   await audit(db,user,'intake.confirmed',sourceId,{source_type:source.type,event_type:item.event_type});
   return {duplicate:false,obligationId,transactionId};
 }

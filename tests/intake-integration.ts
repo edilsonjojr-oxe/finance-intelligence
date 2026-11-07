@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { database,transaction,type DB } from '../src/server/db';
-import { migrationSQL } from '../src/server/migrations';
+import { migrations,migrationSQL } from '../src/server/migrations';
 import { authenticate,authStatus,hash } from '../src/server/auth';
 import { financeAction,getFinance } from '../src/server/finance-service';
 import { collectSnapshot,createBackup,decryptSnapshot,restoreSnapshot,backupTables } from '../src/server/backup';
@@ -74,7 +74,7 @@ async function main(){
   const tampered=JSON.parse(encrypted);const bytes=Buffer.from(tampered.data,'base64');bytes[0]^=1;tampered.data=bytes.toString('base64');await assert.rejects(()=>decryptSnapshot(JSON.stringify(tampered),secret));
   const snapshot=await decryptSnapshot(encrypted,secret);assert.equal(snapshot.tables.users.length,1);
   const restored=new PGlite();await restored.waitReady;
-  for(let i=0;i<2;i++)await restored.exec(await migrationSQL(i));
+  for(let i=0;i<migrations.length;i++)await restored.exec(await migrationSQL(i));
   try {
     await restored.transaction(tx=>restoreSnapshot(tx as DB,snapshot));
     for(const table of backupTables){const count=await restored.query<{n:number}>(`SELECT count(*)::int AS n FROM ${table}`);assert.equal(count.rows[0].n,snapshot.tables[table].length);}
