@@ -1,0 +1,26 @@
+# Alternativa de hospedagem Node; não provisiona nem publica sozinho.
+# O único banco financeiro é o PostgreSQL do Supabase já escolhido pelo usuário.
+# Plano pago: revisar preço e obter aprovação antes de criar o serviço.
+# APP_ORIGIN deve ser a URL HTTPS definitiva. Defina DATABASE_URL com papel restrito.
+services:
+  - type: web
+    name: finance-intelligence
+    runtime: node
+    plan: 0.5c-512mb
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:cloud
+    healthCheckPath: /api/health
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: 24
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_ORIGIN
+        sync: false
+      - key: SETUP_TOKEN
+        generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

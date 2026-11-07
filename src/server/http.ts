@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from "next/server";
+import { ZodError } from "zod";
+import { AppError } from "./auth";
+import { isAllowedRequestOrigin } from "./request-origin";
+export function errorResponse(error: unknown) {
+  if (error instanceof AppError)
+    return NextResponse.json(
+      { error: error.message },
+      { status: error.status },
+    );
+  if (error instanceof ZodError)
+    return NextResponse.json(
+      {
+        error: error.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("; "),
+      },
+      { status: 400 },
+    );
+  console.error(
+    "Finance request failed:",
+    error instanceof Error ? error.name : "Unknown error",
+  );
+  return NextResponse.json(
+    {
+      error:
+        "Não foi possível concluir a operação. Nenhuma alteração parcial foi salva.",
+    },
+    { status: 500 },
+  );
+}
+export async function readBody(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (!isAllowedRequestOrigin(origin, request.url, process.env.APP_ORIGIN))
+    throw new AppError("Origem da solicitação não autorizada.", 403);
+  if (!request.headers.get("content-type")?.includes("application/json"))
+    throw new AppError("Envie JSON.", 415);
+  const reader = request.body?.getReader();
+  if (!reader) throw new AppError("Corpo vazio.");
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > 2_100_000) {
+      await reader.cancel();
+      throw new AppError("Arquivo muito grande.", 413);
+    }
+    chunks.push(value);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new AppError("JSON inválido.");
+  }
+}
