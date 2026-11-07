@@ -14,8 +14,16 @@ login próprio do app (não Supabase Auth). A base local será copiada no moment
   em modo transação: `aws-1-sa-east-1.pooler.supabase.com:6543`, usuário
   `finance_app.pafegzsrtocggmxqrpqh`. A senha fica só em `.env.supabase` (não versionado) e nas
   variáveis da Vercel. Para trocá-la, envie apenas o verificador SCRAM (ver hardening.sql).
-- Banco atualmente vazio. Testado com dados sintéticos (cadastro, conta, layout de celular,
-  cópia completa de perfil) e limpo em seguida.
+- Testado com dados sintéticos (cadastro, conta, layout de celular, cópia completa de
+  perfil) e limpo em seguida.
+
+## Em produção desde 7 nov 2026
+
+- Site: https://finance-intelligence-8onn.vercel.app (deploy automático a cada push em `main`).
+- Base pessoal copiada do PC para o Supabase nesta data (contagens conferidas). A pasta
+  `.data/finance` ficou como histórico e não deve mais receber lançamentos; cópia de
+  segurança em `backups/finance-antes-da-nuvem-*` (fora do git).
+- O servidor local da porta 3000 foi desligado para evitar duas bases divergentes.
 
 ## Desenvolvimento contra o Supabase
 
