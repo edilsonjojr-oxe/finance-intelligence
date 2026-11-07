@@ -1,53 +1,90 @@
-// Categorização automática: primeiro o que o próprio usuário já decidiu para o mesmo
-// estabelecimento (memória), depois regras por palavras-chave. Sempre editável na revisão.
+// Categorização automática em dois níveis ("Grupo / Subcategoria"): primeiro o que o próprio
+// usuário já decidiu para o mesmo estabelecimento (memória), depois regras por palavras-chave.
+// Sempre editável na revisão e depois de confirmado.
 
 export const UNCATEGORIZED = 'Sem categoria';
+export const SEPARATOR = ' / ';
 
-/** Categorias prontas. As personalizadas do usuário se somam a estas. */
-export const defaultCategories = [
-  'Alimentação', 'Supermercado', 'Moradia', 'Contas da casa', 'Transporte', 'Combustível',
-  'Saúde', 'Farmácia', 'Educação', 'Lazer', 'Viagem', 'Assinaturas', 'Internet',
-  'Compras', 'Vestuário', 'Pets', 'Beleza e cuidados', 'Presentes e doações', 'Serviços',
-  'Impostos', 'Tarifas bancárias', 'Juros e encargos', 'Salário', 'Outras receitas',
-  'Investimentos', 'Outros',
-] as const;
+/** Grupos e subcategorias prontos. As personalizadas do usuário se somam a estes. */
+export const categoryTree: Record<string, string[]> = {
+  'Alimentação': ['Mercado', 'Delivery', 'Restaurantes e lanches', 'Padaria e café', 'Bebidas'],
+  'Casa': ['Cama, mesa e banho', 'Limpeza', 'Utensílios e decoração', 'Manutenção', 'Móveis e eletrodomésticos'],
+  'Moradia': ['Aluguel e condomínio', 'Luz, água e gás', 'Internet e telefone', 'IPTU'],
+  'Transporte': ['Apps de corrida', 'Combustível', 'Estacionamento e pedágio', 'Transporte público', 'Veículo'],
+  'Saúde': ['Farmácia', 'Consultas e exames', 'Plano de saúde', 'Academia'],
+  'Cuidados pessoais': ['Higiene', 'Beleza'],
+  'Compras': ['Online', 'Vestuário', 'Eletrônicos', 'Presentes'],
+  'Lazer': ['Passeios e eventos', 'Jogos', 'Hobbies'],
+  'Viagem': ['Hospedagem', 'Passagens', 'Passeios'],
+  'Assinaturas': ['Streaming', 'Software e apps'],
+  'Educação': ['Escola e cursos', 'Livros e material'],
+  'Pets': ['Ração e petshop', 'Veterinário'],
+  'Impostos e taxas': ['Impostos', 'Tarifas bancárias', 'Juros e encargos'],
+  'Doações': [],
+  'Outros': [],
+  'Receitas': ['Salário', 'Investimentos', 'Reembolsos e estornos', 'Outras receitas'],
+};
+const path = (group: string, sub?: string) => (sub ? `${group}${SEPARATOR}${sub}` : group);
+export const defaultCategories: string[] = Object.entries(categoryTree).flatMap(([group, subs]) =>
+  subs.length ? subs.map((s) => path(group, s)) : [group],
+);
+
+/** Grupo de uma categoria ("Alimentação / Mercado" → "Alimentação"). */
+export const categoryGroup = (name: string) => name.split(SEPARATOR)[0].trim();
+export const categorySub = (name: string) => name.split(SEPARATOR).slice(1).join(SEPARATOR).trim();
 
 const normalize = (s: string) =>
   s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-// Ordem importa: a primeira regra que casar vence.
+// Ordem importa: a primeira regra que casar vence (delivery antes de corrida e de mercado).
 const rules: [string, RegExp][] = [
-  ['Assinaturas', /netflix|spotify|disney|hbo|globoplay|paramount|deezer|youtube ?premium|prime ?video|amazon ?prime|apple\.com|icloud|google ?(?:one|storage)|chatgpt|openai|adobe|microsoft ?365|canva|crunchyroll|star ?plus|tidal|audible|kindle unlimited/],
-  ['Alimentação', /ifood|rappi|aiqfome|restaurante|lanchonete|lancheria|pizzaria|hamburgu|burger|mc ?donald|subway|outback|starbucks|cafeteria|\bcafe\b|padaria|confeitaria|churrascaria|sushi|bistro|acai|sorveteria|doceria|\blanches?\b/],
-  ['Supermercado', /supermercado|\bmercado\b|atacad|assai|carrefour|pao de acucar|zaffari|nacional|hortifruti|sacolao|acougue|bourbon|\bdia\b supermercado|walmart|makro|fort atacadista|super ?nosso/],
-  ['Combustível', /\bposto\b|shell|ipiranga|petrobras|br mania|combustiv|gasolina|etanol|\bgnv\b/],
-  ['Transporte', /\buber\b|99 ?(?:app|pop|taxi)|cabify|\btaxi\b|estacionament|pedagio|sem parar|conectcar|veloe|\bmetro\b|onibus|trensurb|bilhete unico|blablacar|zul digital|estapar/],
-  ['Farmácia', /farmacia|drogaria|panvel|droga ?raia|drogasil|pague menos|sao joao farm|\bdrogas?\b|ultrafarma/],
-  ['Saúde', /hospital|clinica|laboratorio|unimed|odonto|dentist|medic[oa]|exame|fisioterap|psicolog|\bsaude\b|amil|bradesco saude|sulamerica saude|hapvida/],
-  ['Educação', /escola|colegio|faculdade|universidade|\bcurso\b|udemy|alura|coursera|duolingo|livraria|saraiva|mensalidade escolar/],
-  ['Internet', /\bvivo\b|\bclaro\b|\btim\b|\bnet\b|internet|telefonica|fibra|banda larga|starlink/],
-  ['Contas da casa', /energia|\bluz\b|ceee|cemig|\blight\b|enel|cpfl|copel|celesc|equatorial|\bagua\b|corsan|sabesp|dmae|\bgas\b|comgas|ultragaz|supergasbras/],
-  ['Moradia', /aluguel|condominio|imobiliaria|\biptu\b/],
-  ['Viagem', /hotel|pousada|airbnb|booking|latam|gol linhas|voegol|azul linhas|voeazul|decolar|123 ?milhas|hurb|maxmilhas|rodoviaria|passagem/],
-  ['Lazer', /cinema|cinemark|ingresso|sympla|eventim|\bshow\b|teatro|steam|playstation|\bpsn\b|xbox|nintendo|parque|clube|academia|smart ?fit|bodytech|gympass|wellhub/],
-  ['Pets', /petshop|pet shop|\bpet\b|cobasi|petz|veterinar|racao/],
-  ['Beleza e cuidados', /salao|barbearia|cabeleireir|estetica|manicure|boticario|natura|sephora|avon|eudora|perfumaria/],
-  ['Vestuário', /renner|riachuelo|\bc ?& ?a\b|\bcea\b|zara|hering|centauro|netshoes|nike|adidas|marisa|youcom|calcados|sapataria|arezzo/],
-  ['Compras', /amazon|mercado ?livre|mercadolivre|mercadopago\*ml|shopee|aliexpress|magalu|magazine luiza|americanas|shein|casas bahia|ponto frio|kabum|leroy merlin|tok ?& ?stok|temu/],
-  ['Tarifas bancárias', /tarifa|anuidade|\biof\b|cesta de servicos|taxa de manutencao/],
-  ['Juros e encargos', /juros|encargo|\bmulta\b|\bmora\b|rotativo|parcelamento de fatura/],
-  ['Impostos', /\bipva\b|\bdarf\b|imposto|\bdas\b simples|licenciamento|detran|receita federal/],
-  ['Presentes e doações', /doacao|vakinha|presente|floricultura|kopenhagen|cacau show/],
-  ['Investimentos', /aplicacao|investimento|tesouro direto|\bcdb\b|corretora/],
+  [path('Alimentação', 'Delivery'), /\bifd\b|ifd\*|ifood|99 ?food|dl\*99|keeta|rappi|aiqfome|ze ?delivery|uber ?\*? ?eats|james delivery|delivery much/],
+  [path('Transporte', 'Apps de corrida'), /\buber\b|99 ?(?:app|pop|taxi|tecnologia)|\b99\*|cabify|indriver|\btaxi\b|garupa/],
+  [path('Assinaturas', 'Streaming'), /netflix|spotify|disney|hbo|globoplay|paramount|deezer|youtube ?premium|prime ?video|amazon ?prime|crunchyroll|star ?plus|tidal|audible|apple ?tv|kindle unlimited/],
+  [path('Assinaturas', 'Software e apps'), /apple\.com|icloud|google ?(?:one|storage|play)|chatgpt|openai|adobe|microsoft ?365|canva|dropbox|notion|claude\.ai|anthropic/],
+  [path('Alimentação', 'Padaria e café'), /padaria|confeitaria|panificadora|cafeteria|\bcafe\b|starbucks|doceria|sorveteria|acai/],
+  [path('Alimentação', 'Restaurantes e lanches'), /restaurante|lanchonete|lancheria|pizzaria|hamburgu|burger|mc ?donald|subway|outback|churrascaria|sushi|bistro|\blanches?\b|\bbar\b e|petiscaria|galeteria|buffet/],
+  [path('Alimentação', 'Mercado'), /supermercado|\bmercado\b|mercearia|atacad|assai|carrefour|pao de acucar|zaffari|\bnacional\b|hortifruti|sacolao|acougue|bourbon|walmart|makro|fort atacadista|super ?nosso|unidasul|asun|stok center|\bbig\b/],
+  [path('Transporte', 'Combustível'), /\bposto\b|shell|ipiranga|petrobras|br mania|combustiv|gasolina|etanol|\bgnv\b/],
+  [path('Transporte', 'Estacionamento e pedágio'), /estacionament|pedagio|sem parar|conectcar|veloe|estapar|zul digital|multipark|parking/],
+  [path('Transporte', 'Transporte público'), /\bmetro\b|onibus|trensurb|bilhete unico|\btri\b|carris|blablacar|rodoviaria/],
+  [path('Saúde', 'Farmácia'), /farmacia|drogaria|panvel|droga ?raia|drogasil|pague menos|sao joao farm|\bdrogas?\b|ultrafarma/],
+  [path('Saúde', 'Academia'), /academia|smart ?fit|bodytech|gympass|wellhub|crossfit|pilates/],
+  [path('Saúde', 'Plano de saúde'), /unimed|amil|bradesco saude|sulamerica saude|hapvida|notredame|plano de saude/],
+  [path('Saúde', 'Consultas e exames'), /hospital|clinica|laboratorio|odonto|dentist|medic[oa]|exame|fisioterap|psicolog/],
+  [path('Educação', 'Escola e cursos'), /escola|colegio|faculdade|universidade|\bcurso\b|udemy|alura|coursera|duolingo|mensalidade escolar/],
+  [path('Educação', 'Livros e material'), /livraria|saraiva|papelaria|kalunga/],
+  [path('Moradia', 'Internet e telefone'), /\bvivo\b|\bclaro\b|\btim\b|\bnet\b|internet|telefonica|fibra|banda larga|starlink/],
+  [path('Moradia', 'Luz, água e gás'), /energia|\bluz\b|ceee|cemig|\blight\b|enel|cpfl|copel|celesc|equatorial|rge|\bagua\b|corsan|sabesp|dmae|\bgas\b|comgas|ultragaz|supergasbras/],
+  [path('Moradia', 'Aluguel e condomínio'), /aluguel|condominio|imobiliaria/],
+  [path('Moradia', 'IPTU'), /\biptu\b/],
+  [path('Viagem', 'Hospedagem'), /hotel|pousada|airbnb|booking|hostel|hurb/],
+  [path('Viagem', 'Passagens'), /latam|gol linhas|voegol|azul linhas|voeazul|decolar|123 ?milhas|maxmilhas|passagem/],
+  [path('Lazer', 'Passeios e eventos'), /cinema|cinemark|ingresso|sympla|eventim|\bshow\b|teatro|parque|clube/],
+  [path('Lazer', 'Jogos'), /steam|playstation|\bpsn\b|xbox|nintendo|epic games/],
+  [path('Pets', 'Veterinário'), /veterinar/],
+  [path('Pets', 'Ração e petshop'), /petshop|pet shop|\bpet\b|cobasi|petz|racao/],
+  [path('Cuidados pessoais', 'Beleza'), /salao|barbearia|cabeleireir|estetica|manicure|boticario|natura|sephora|avon|eudora|perfumaria/],
+  [path('Casa', 'Cama, mesa e banho'), /camicado|cama ?mesa|toalha|lencol|edredom|travesseiro|cortina/],
+  [path('Casa', 'Utensílios e decoração'), /tok ?& ?stok|etna|havan|leroy merlin|utilidades|decorac/],
+  [path('Compras', 'Vestuário'), /renner|riachuelo|\bc ?& ?a\b|\bcea\b|zara|hering|centauro|netshoes|nike|adidas|marisa|youcom|calcados|sapataria|arezzo/],
+  [path('Compras', 'Eletrônicos'), /kabum|fast shop|samsung|apple store|dell|lenovo|xiaomi/],
+  [path('Compras', 'Online'), /amazon|mercado ?livre|mercadolivre|mercadopago\*ml|shopee|aliexpress|magalu|magazine luiza|americanas|shein|casas bahia|ponto frio|temu/],
+  [path('Impostos e taxas', 'Tarifas bancárias'), /tarifa|anuidade|\biof\b|cesta de servicos|taxa de manutencao/],
+  [path('Impostos e taxas', 'Juros e encargos'), /juros|encargo|\bmulta\b|\bmora\b|rotativo|parcelamento de fatura/],
+  [path('Impostos e taxas', 'Impostos'), /\bipva\b|\bdarf\b|imposto|\bdas\b simples|licenciamento|detran|receita federal/],
+  ['Doações', /doacao|vakinha|dizimo|oferta/],
+  [path('Compras', 'Presentes'), /presente|floricultura|kopenhagen|cacau show/],
 ];
 const incomeRules: [string, RegExp][] = [
-  ['Salário', /salario|folha de pagamento|pagamento de salario|proventos|vencimentos|\bpro ?labore\b/],
-  ['Investimentos', /rendimento|dividendo|\bjcp\b|resgate/],
+  [path('Receitas', 'Salário'), /salario|folha de pagamento|pagamento de salario|proventos|vencimentos|\bpro ?labore\b/],
+  [path('Receitas', 'Investimentos'), /rendimento|dividendo|\bjcp\b|resgate/],
+  [path('Receitas', 'Reembolsos e estornos'), /estorno|reembolso|cashback|devolucao|credito/],
 ];
 
 /**
  * Chave do estabelecimento para a memória: sem acentos, números, parcelas e sufixos de
- * cidade/código, até 3 palavras. "IFOOD *RESTAURANTE X PARC 02/03" e "Ifood *Restaurante X"
+ * cidade/código, até 3 palavras. "IFD*RESTAURANTE X PARC 02/03" e "Ifd*Restaurante X"
  * viram a mesma chave.
  */
 export function merchantKey(description: string) {
@@ -67,7 +104,7 @@ export function buildMemory(
 ): CategoryMemory {
   const memory: CategoryMemory = new Map();
   const sorted = [...items]
-    .filter((i) => i.category && i.category !== UNCATEGORIZED && i.category !== 'Transferência interna' && i.status !== 'reversed')
+    .filter((i) => i.category && i.category !== UNCATEGORIZED && i.category !== 'Transferência interna' && i.category !== DIVIDED && i.status !== 'reversed')
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   for (const item of sorted) {
     const key = merchantKey(item.description);
@@ -87,9 +124,12 @@ export function suggestCategory(
   const text = normalize(description);
   for (const [category, pattern] of kind === 'income' ? incomeRules : rules)
     if (pattern.test(text)) return category;
-  if (kind === 'income' && /estorno|reembolso|cashback|credito/.test(text)) return 'Outras receitas';
+  if (kind === 'income') return path('Receitas', 'Outras receitas');
   return UNCATEGORIZED;
 }
+
+/** Categoria exibida para um lançamento dividido entre várias categorias. */
+export const DIVIDED = 'Dividido';
 
 /** Lista para os seletores: prontas + personalizadas + já usadas, sem repetição. */
 export function categoryList(custom: string[] = [], used: string[] = []) {
@@ -97,9 +137,20 @@ export function categoryList(custom: string[] = [], used: string[] = []) {
   const out: string[] = [];
   for (const name of [UNCATEGORIZED, ...defaultCategories, ...custom, ...used]) {
     const clean = name.trim();
-    if (!clean || clean === 'Transferência interna' || seen.has(clean.toLowerCase())) continue;
+    if (!clean || clean === 'Transferência interna' || clean === DIVIDED || seen.has(clean.toLowerCase())) continue;
     seen.add(clean.toLowerCase());
     out.push(clean);
   }
   return out;
+}
+
+/** Normaliza o separador digitado pelo usuário ("Casa/Limpeza", "Casa > Limpeza"). */
+export function cleanCategory(value: string) {
+  return value
+    .split(/\s*(?:\/|>|›)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join(SEPARATOR)
+    .slice(0, 80);
 }

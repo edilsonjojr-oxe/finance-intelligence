@@ -18,10 +18,11 @@ import type {
   Candidate,
   Batch,
   FinanceState,
+  Split,
 } from "../lib/types";
 import { parseImport } from "./imports";
 import { contractDetailsSchema, financialDescription } from "../lib/intake";
-import { buildMemory, suggestCategory, UNCATEGORIZED } from "../lib/categorize";
+import { buildMemory, cleanCategory, DIVIDED, suggestCategory, UNCATEGORIZED } from "../lib/categorize";
 const id = z.string().uuid();
 const text = z.string().trim().min(1).max(300);
 const money = z
@@ -122,7 +123,7 @@ export async function insertMovement(
       input.date,
       input.competence,
       input.description,
-      input.kind === "transfer" ? "Transferência interna" : input.category,
+      input.kind === "transfer" ? "Transferência interna" : cleanCategory(input.category) || UNCATEGORIZED,
       extra.fingerprint || null,
       extra.source || "manual",
     ],
@@ -188,9 +189,16 @@ export async function getFinance(user: string): Promise<FinanceState> {
         [user],
       )
     ).rows.map((r) => r.name);
+    const splits = (
+      await db.query<Split>(
+        "SELECT transaction_id,category,amount::text,description FROM transaction_splits WHERE user_id=$1 ORDER BY transaction_id,position",
+        [user],
+      )
+    ).rows;
     const today = localToday();
     return {
       categories,
+      splits,
       accounts: accounts.map((a) => ({
         ...a,
         balance: balanceFor(a, transactions, today),
@@ -298,12 +306,62 @@ export async function financeAction(
       await audit(db, user, action, v.id);
       return { id: v.id };
     }
+    if (action === "movement.categorize") {
+      // Troca a categoria de um lançamento confirmado (desfaz uma divisão, se houver).
+      const v = z.object({ id, category }).parse(payload);
+      const name = cleanCategory(v.category);
+      if (!name || name === "Transferência interna" || name === DIVIDED) throw new AppError("Categoria inválida.");
+      const r = await db.query(
+        "UPDATE transactions SET category=$1 WHERE id=$2 AND user_id=$3 AND kind<>'transfer' RETURNING id",
+        [name, v.id, user],
+      );
+      if (!r.rows.length) throw new AppError("Lançamento não encontrado ou é uma transferência.", 404);
+      await db.query("DELETE FROM transaction_splits WHERE user_id=$1 AND transaction_id=$2", [user, v.id]);
+      await audit(db, user, action, v.id, { category: name });
+      return { id: v.id };
+    }
+    if (action === "movement.split") {
+      // Divide um lançamento entre categorias; a soma das partes deve fechar com o valor.
+      const v = z
+        .object({
+          id,
+          parts: z
+            .array(z.object({ category, amount: money, description: z.string().trim().max(160).default("") }))
+            .min(2, "Divida em pelo menos duas partes.")
+            .max(50),
+        })
+        .parse(payload);
+      const t = (
+        await db.query<{ amount: string; kind: string }>(
+          "SELECT amount::text,kind FROM transactions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+          [v.id, user],
+        )
+      ).rows[0];
+      if (!t) throw new AppError("Lançamento não encontrado.", 404);
+      if (t.kind === "transfer") throw new AppError("Transferências não têm categoria.");
+      const total = v.parts.reduce((n, p) => n + cents(p.amount), 0n);
+      if (total !== cents(t.amount))
+        throw new AppError(`As partes somam ${decimal(total)}; o lançamento é de ${t.amount}. Ajuste os valores.`);
+      await db.query("DELETE FROM transaction_splits WHERE user_id=$1 AND transaction_id=$2", [user, v.id]);
+      for (const [position, p] of v.parts.entries()) {
+        const name = cleanCategory(p.category);
+        if (!name || name === DIVIDED) throw new AppError("Categoria inválida em uma das partes.");
+        await db.query(
+          "INSERT INTO transaction_splits(id,user_id,transaction_id,category,amount,description,position) VALUES($1,$2,$3,$4,$5,$6,$7)",
+          [randomUUID(), user, v.id, name, decimal(cents(p.amount)), financialDescription(p.description), position],
+        );
+      }
+      await db.query("UPDATE transactions SET category=$1 WHERE id=$2 AND user_id=$3", [DIVIDED, v.id, user]);
+      await audit(db, user, action, v.id, { parts: v.parts.length });
+      return { id: v.id };
+    }
     if (action === "category.create") {
-      const v = z.object({ name: category }).parse(payload);
-      if (v.name.toLowerCase() === "transferência interna") throw new AppError("Nome reservado.");
-      await db.query("INSERT INTO categories(user_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING", [user, v.name]);
-      await audit(db, user, action, user, { name: v.name });
-      return { id: v.name, name: v.name };
+      const name = cleanCategory(z.object({ name: category }).parse(payload).name);
+      if (!name || ["transferência interna", DIVIDED.toLowerCase()].includes(name.toLowerCase()))
+        throw new AppError("Nome reservado.");
+      await db.query("INSERT INTO categories(user_id,name) VALUES($1,$2) ON CONFLICT DO NOTHING", [user, name]);
+      await audit(db, user, action, user, { name });
+      return { id: name, name };
     }
     if (action === "category.delete") {
       // Remove só da lista; lançamentos antigos mantêm o nome que já tinham.

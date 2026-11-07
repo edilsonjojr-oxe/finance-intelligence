@@ -1,5 +1,5 @@
 import { addDays, cents, decimal } from "./money";
-import type { Account, Movement, Obligation, ForecastPoint } from "./types";
+import type { Account, Movement, Obligation, ForecastPoint, Split } from "./types";
 export function balanceFor(
   account: Pick<Account, "id" | "opening_balance" | "opening_date">,
   transactions: Movement[],
@@ -21,6 +21,41 @@ export function balanceFor(
   return decimal(balance);
 }
 export const isCard = (a: Pick<Account, "type">) => a.type === "credit_card";
+
+export type CategoryGroupTotal = { group: string; total: bigint; subs: { name: string; total: bigint }[] };
+/**
+ * Despesas do mês por grupo e subcategoria. Lançamentos divididos entram pelas partes;
+ * os demais pela própria categoria. Estornados e transferências ficam de fora.
+ */
+export function categoryBreakdown(
+  transactions: Movement[],
+  splits: Split[],
+  month: string,
+): CategoryGroupTotal[] {
+  const byTx = new Map<string, Split[]>();
+  for (const s of splits) byTx.set(s.transaction_id, [...(byTx.get(s.transaction_id) || []), s]);
+  const groups = new Map<string, Map<string, bigint>>();
+  const add = (category: string, amount: bigint) => {
+    const [group, ...rest] = category.split(" / ");
+    const sub = rest.join(" / ") || "Geral";
+    const subs = groups.get(group) || new Map<string, bigint>();
+    subs.set(sub, (subs.get(sub) || 0n) + amount);
+    groups.set(group, subs);
+  };
+  for (const t of transactions) {
+    if (t.status !== "posted" || t.kind !== "expense" || !t.date.startsWith(month)) continue;
+    const parts = byTx.get(t.id);
+    if (parts?.length) for (const p of parts) add(p.category, cents(p.amount));
+    else add(t.category, cents(t.amount));
+  }
+  return [...groups.entries()]
+    .map(([group, subs]) => ({
+      group,
+      total: [...subs.values()].reduce((n, v) => n + v, 0n),
+      subs: [...subs.entries()].map(([name, total]) => ({ name, total })).sort((a, b) => (a.total > b.total ? -1 : 1)),
+    }))
+    .sort((a, b) => (a.total > b.total ? -1 : 1));
+}
 /** Próxima data com o dia de vencimento (hoje incluso); dia 31 vira o último dia do mês. */
 export function nextDueDate(today: string, dueDay: number) {
   const [y, m, d] = today.split("-").map(Number);

@@ -41,15 +41,16 @@ import {
   Pencil,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
-import { forecast, isCard, nextDueDate, totals } from "@/lib/finance";
+import { categoryBreakdown, forecast, isCard, nextDueDate, totals } from "@/lib/finance";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
 import CandidateEditor from "./candidate-editor";
 import BackupPanel from "./backup-panel";
 import InvitePanel from "./invite-panel";
 import CategoryPanel from "./category-panel";
+import MovementCategoryEditor from "./movement-category";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
-import { categoryList } from "@/lib/categorize";
+import { categoryList, DIVIDED } from "@/lib/categorize";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -69,6 +70,7 @@ type Modal =
   | "settle"
   | "reverse"
   | "accountEdit"
+  | "categorize"
   | null;
 const navigation = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
@@ -743,6 +745,7 @@ export default function FinanceApp() {
         t.destination_account_id === accountFilter) &&
       `${t.description} ${t.category}`.toLowerCase().includes(search),
   );
+  const allSplits = data.splits;
   const accountName = (id: string) =>
     data.accounts.find((a) => a.id === id)?.name || "Conta";
   const options = data.accounts.map((a) => (
@@ -751,16 +754,8 @@ export default function FinanceApp() {
     </option>
   ));
   const exportURL = `/api/export?month=${encodeURIComponent(month)}&account=${encodeURIComponent(accountFilter)}&search=${encodeURIComponent(search)}`;
-  const categoryTotals: Record<string, bigint> = {};
-  for (const t of data.transactions.filter(
-    (t) =>
-      t.status === "posted" && t.kind === "expense" && t.date.startsWith(month),
-  ))
-    categoryTotals[t.category] =
-      (categoryTotals[t.category] || 0n) + cents(t.amount);
-  const categories = Object.entries(categoryTotals).sort((a, b) =>
-    a[1] > b[1] ? -1 : 1,
-  );
+  // Por grupo (Alimentação, Casa…) com subcategorias; lançamentos divididos entram pelas partes.
+  const categories = categoryBreakdown(data.transactions, data.splits, month);
   const expenses = cents(sum.expense);
   const modalTitle = {
     account: "Adicionar conta",
@@ -770,6 +765,7 @@ export default function FinanceApp() {
     settle: "Liquidar compromisso",
     reverse: "Estornar lançamento",
     accountEdit: "Editar conta ou cartão",
+    categorize: "Categoria do lançamento",
   };
   function MovementTable({ rows }: { rows: Movement[] }) {
     return !rows.length ? (
@@ -817,7 +813,24 @@ export default function FinanceApp() {
                     </span>
                     <span>
                       <strong>{t.description}</strong>
-                      <small>{t.category}</small>
+                      {t.kind === "transfer" ? (
+                        <small>{t.category}</small>
+                      ) : (
+                        <button
+                          type="button"
+                          className="category-link"
+                          title="Trocar ou dividir a categoria"
+                          onClick={() => open("categorize", t.id)}
+                        >
+                          {t.category === DIVIDED
+                            ? allSplits
+                                .filter((s) => s.transaction_id === t.id)
+                                .map((s) => `${s.category} ${brl(s.amount)}`)
+                                .join(" · ")
+                            : t.category}
+                          <Pencil size={11} />
+                        </button>
+                      )}
                     </span>
                   </div>
                 </td>
@@ -1298,7 +1311,7 @@ export default function FinanceApp() {
                   <div className="panel-heading">
                     <div>
                       <h2>Para onde foi seu dinheiro</h2>
-                      <p>Despesas por categoria · mês selecionado</p>
+                      <p>Despesas por grupo · toque para ver as subcategorias</p>
                     </div>
                     <span className="subtle-icon">
                       <ArrowUpRight size={18} />
@@ -1306,24 +1319,39 @@ export default function FinanceApp() {
                   </div>
                   {categories.length ? (
                     <div className="categories">
-                      {categories.slice(0, 5).map(([name, value], i) => (
-                        <div key={name}>
-                          <div className="category-label">
-                            <span>
-                              <i className={`category-dot shade-${i}`} />
-                              {name}
-                            </span>
-                            <strong>{brl(decimal(value))}</strong>
-                          </div>
-                          <div className="bar-track">
-                            <span
-                              className={`shade-${i}`}
-                              style={{
-                                width: `${Number((value * 10000n) / expenses) / 100}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
+                      {categories.map(({ group, total, subs }, i) => (
+                        <details key={group} className="category-group">
+                          <summary>
+                            <div className="category-label">
+                              <span>
+                                <i className={`category-dot shade-${Math.min(i, 4)}`} />
+                                {group}
+                              </span>
+                              <strong>{brl(decimal(total))}</strong>
+                            </div>
+                            <div className="bar-track">
+                              <span
+                                className={`shade-${Math.min(i, 4)}`}
+                                style={{
+                                  width: `${expenses ? Number((total * 10000n) / expenses) / 100 : 0}%`,
+                                }}
+                              />
+                            </div>
+                          </summary>
+                          <ul className="category-subs">
+                            {subs.map((s) => (
+                              <li key={s.name}>
+                                <span>{s.name}</span>
+                                <span>
+                                  {brl(decimal(s.total))}
+                                  <small>
+                                    {total ? Math.round(Number((s.total * 1000n) / total) / 10) : 0}%
+                                  </small>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
                       ))}
                     </div>
                   ) : (
@@ -2158,6 +2186,19 @@ export default function FinanceApp() {
               <X size={21} />
             </button>
           </div>
+          {modal === "categorize" ? (
+            (() => {
+              const t = data.transactions.find((x) => x.id === target);
+              return t ? (
+                <MovementCategoryEditor
+                  movement={t}
+                  splits={data.splits.filter((s) => s.transaction_id === t.id)}
+                  act={act}
+                  onClose={() => setModal(null)}
+                />
+              ) : null;
+            })()
+          ) : (
           <form onSubmit={submitModal}>
             {modal === "account" && (
               <>
@@ -2554,6 +2595,7 @@ export default function FinanceApp() {
               </button>
             </div>
           </form>
+          )}
         </dialog>
       )}
     </div>

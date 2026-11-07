@@ -1,18 +1,23 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
-import { defaultCategories } from '@/lib/categorize';
+import { categoryGroup, categoryTree, SEPARATOR } from '@/lib/categorize';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
+const NEW_GROUP = '__novo__';
 
-/** Categorias prontas (fixas) e personalizadas (criadas e removidas pelo usuário). */
+/** Grupos e subcategorias prontos (fixos) e personalizados (criados e removidos pelo usuário). */
 export default function CategoryPanel({ custom, act }: { custom: string[]; act: Act }) {
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [group, setGroup] = useState('Alimentação');
+  const groups = [...new Set([...Object.keys(categoryTree), ...custom.map(categoryGroup)])];
   async function add(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const name = String(new FormData(form).get('name') || '').trim();
-    if (!name) return;
+    const fd = new FormData(form);
+    const sub = String(fd.get('sub') || '').trim();
+    const chosen = group === NEW_GROUP ? String(fd.get('new_group') || '').trim() : group;
+    if (!chosen) return setError('Informe o grupo.');
+    const name = sub ? `${chosen}${SEPARATOR}${sub}` : chosen;
     setBusy(true); setError('');
     try { await act('category.create', { name }, `Categoria "${name}" criada.`); form.reset(); }
     catch (e) { setError((e as Error).message); }
@@ -28,14 +33,28 @@ export default function CategoryPanel({ custom, act }: { custom: string[]; act: 
     <section className="panel settings-card">
       <h2>Categorias</h2>
       <p>
-        O sistema sugere a categoria de cada gasto (por exemplo, iFood → Alimentação, Netflix →
-        Assinaturas) e aprende com as suas correções: da próxima vez, o mesmo estabelecimento
-        recebe a categoria que você escolheu.
+        As categorias têm grupo e subcategoria, como <em>Alimentação / Mercado</em> e{' '}
+        <em>Alimentação / Delivery</em>. O sistema sugere a de cada gasto e aprende com as suas
+        correções. Em Lançamentos, toque na categoria para trocar ou dividir uma compra entre
+        várias.
       </p>
       <form onSubmit={add} className="category-add">
         <label className="field">
-          <span>Nova categoria</span>
-          <input name="name" maxLength={80} required placeholder="Ex.: Escola das crianças" disabled={busy} />
+          <span>Grupo</span>
+          <select value={group} onChange={(e) => setGroup(e.target.value)} disabled={busy}>
+            {groups.map((g) => <option key={g} value={g}>{g}</option>)}
+            <option value={NEW_GROUP}>Novo grupo…</option>
+          </select>
+        </label>
+        {group === NEW_GROUP && (
+          <label className="field">
+            <span>Nome do grupo</span>
+            <input name="new_group" maxLength={40} required placeholder="Ex.: Filhos" disabled={busy} />
+          </label>
+        )}
+        <label className="field">
+          <span>Subcategoria</span>
+          <input name="sub" maxLength={38} placeholder="Ex.: Lanche do trabalho" disabled={busy} />
         </label>
         <button className="button" disabled={busy}>Adicionar</button>
       </form>
@@ -54,10 +73,15 @@ export default function CategoryPanel({ custom, act }: { custom: string[]; act: 
         </>
       )}
       <details>
-        <summary>Ver categorias prontas ({defaultCategories.length})</summary>
-        <ul className="chip-list muted">
-          {defaultCategories.map((c) => <li key={c} className="chip">{c}</li>)}
-        </ul>
+        <summary>Ver categorias prontas</summary>
+        <dl className="category-tree">
+          {Object.entries(categoryTree).map(([g, subs]) => (
+            <div key={g}>
+              <dt>{g}</dt>
+              <dd>{subs.length ? subs.join(' · ') : '—'}</dd>
+            </div>
+          ))}
+        </dl>
       </details>
     </section>
   );

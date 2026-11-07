@@ -94,4 +94,12 @@ export type FinanceState = {
   storage: "local" | "postgres";
   /** Categorias criadas pelo usuário (as prontas ficam em lib/categorize). */
   categories: string[];
+  /** Partes de lançamentos divididos entre categorias. */
+  splits: Split[];
+};
+export type Split = {
+  transaction_id: string;
+  category: string;
+  amount: string;
+  description: string;
 };

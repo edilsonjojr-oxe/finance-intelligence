@@ -2219,3 +2219,114 @@ dd {
 .chip button:hover {
   color: var(--red);
 }
+
+/* Categoria clicável na lista de lançamentos */
+.category-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.category-link:hover,
+.category-link:focus-visible {
+  color: var(--green);
+  text-decoration: underline;
+}
+
+/* Relatório por grupo/subcategoria */
+.category-group summary {
+  list-style: none;
+  cursor: pointer;
+}
+.category-group summary::-webkit-details-marker {
+  display: none;
+}
+.category-subs {
+  margin: 6px 0 4px 18px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+.category-subs li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.category-subs small {
+  margin-left: 6px;
+  opacity: 0.8;
+}
+
+/* Divisão de lançamento */
+.category-editor {
+  display: grid;
+  gap: 12px;
+}
+.split-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.split-row legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.split-row .field {
+  margin: 0;
+}
+.split-row .split-note,
+.split-row .split-actions {
+  grid-column: 1 / -1;
+}
+.split-actions,
+.split-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.split-summary .ok {
+  color: var(--green);
+  font-weight: 600;
+}
+.split-summary .pending {
+  color: var(--orange);
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .split-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Árvore de categorias prontas */
+.category-tree {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12px;
+}
+.category-tree dt {
+  font-weight: 700;
+  color: var(--ink);
+}
+.category-tree dd {
+  margin: 0 0 4px;
+  color: var(--muted);
+}
