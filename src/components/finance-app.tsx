@@ -39,6 +39,7 @@ import {
   X,
   CreditCard,
   Pencil,
+  HandCoins,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
 import { categoryBreakdown, forecast, isCard, nextDueDate, totals } from "@/lib/finance";
@@ -49,6 +50,8 @@ import BackupPanel from "./backup-panel";
 import InvitePanel from "./invite-panel";
 import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
+import LoansPage from "./loans-page";
+import SheetImport from "./sheet-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
 import { categoryList, DIVIDED } from "@/lib/categorize";
 import { obligationStage } from "@/lib/intake";
@@ -59,6 +62,7 @@ type Page =
   | "accounts"
   | "obligations"
   | "contracts"
+  | "loans"
   | "imports"
   | "forecast"
   | "settings";
@@ -78,6 +82,7 @@ const navigation = [
   { id: "accounts", label: "Minhas contas", icon: Wallet },
   { id: "obligations", label: "Compromissos", icon: CalendarDays },
   { id: "contracts", label: "Contratos", icon: FileText },
+  { id: "loans", label: "Empréstimos", icon: HandCoins },
   { id: "imports", label: "Importações", icon: Upload },
   { id: "forecast", label: "Projeção de caixa", icon: TrendingUp },
 ] as const;
@@ -102,6 +107,11 @@ const pageText: Record<Page, { title: string; subtitle: string }> = {
   contracts: {
     title: "Mais clareza sobre o que foi combinado.",
     subtitle: "Transforme condições contratuais em compromissos futuros.",
+  },
+  loans: {
+    title: "Quem deve a quem, sem esquecer nada.",
+    subtitle:
+      "Empréstimos com pessoas ou bancos e acordos de dívida, parcela por parcela.",
   },
   imports: {
     title: "Menos digitação. Mais controle.",
@@ -1680,9 +1690,13 @@ export default function FinanceApp() {
               )}
             </>
           )}
+          {page === "loans" && (
+            <LoansPage data={data} act={act} onPay={(id) => open("settle", id)} />
+          )}
           {page === "imports" && (
             <>
               <SourceIntake data={data} act={act}/>
+              <SheetImport data={data} act={act}/>
               <div className="import-grid">
                 <section className="panel import-panel">
                   <div className="panel-heading">

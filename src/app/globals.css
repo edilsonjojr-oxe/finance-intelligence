@@ -2330,3 +2330,215 @@ dd {
   margin: 0 0 4px;
   color: var(--muted);
 }
+
+/* Empréstimos e acordos */
+.auth-switch.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.loan-form {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.loans-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.loan-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+.loan-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+.loan-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.loan-head h2 {
+  margin: 6px 0 2px;
+  font-size: 16px;
+}
+.loan-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.loan-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.loan-badge.owe {
+  background: #b7754220;
+  color: var(--orange);
+}
+.loan-badge.owed {
+  background: #16756518;
+  color: var(--green);
+}
+.loan-amount {
+  display: grid;
+  justify-items: end;
+  white-space: nowrap;
+}
+.loan-amount small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.parcel-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.parcel-list li {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.parcel-list li.paid {
+  color: var(--muted);
+}
+.parcel-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: end;
+}
+.schedule-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1.3fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 560px) {
+  .loans-metrics {
+    grid-template-columns: 1fr;
+  }
+  .parcel-list li {
+    grid-template-columns: 1fr 1fr;
+  }
+  .parcel-actions {
+    grid-column: 1 / -1;
+    justify-content: start;
+  }
+  .auth-switch.three {
+    grid-template-columns: 1fr;
+  }
+  .schedule-row {
+    grid-template-columns: 28px 1fr 1fr;
+  }
+}
+
+/* Importar planilha */
+.sheet-import {
+  margin-top: 18px;
+}
+.import-section {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.import-section > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.import-sheet {
+  margin: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.import-sheet > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+.import-row,
+.import-loan {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 2fr) 96px 140px minmax(0, 1.6fr) 70px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.import-loan {
+  grid-template-columns: 20px minmax(0, 1fr) 110px 120px;
+}
+.import-loan small,
+.import-desc small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+.import-row.off,
+.import-loan.off {
+  opacity: 0.5;
+}
+.import-row input:not([type="checkbox"]),
+.import-loan input:not([type="checkbox"]),
+.import-loan select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 12px;
+  background: var(--paper);
+}
+.import-row input.guessed {
+  border-style: dashed;
+  border-color: var(--orange);
+}
+.status-pill {
+  justify-self: end;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.status-pill.paid {
+  background: #16756518;
+  color: var(--green);
+}
+.status-pill.open {
+  background: #b7754220;
+  color: var(--orange);
+}
+.day-input {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+.day-input input {
+  width: 56px;
+}
+@media (max-width: 720px) {
+  .import-row {
+    grid-template-columns: 20px 1fr 1fr;
+  }
+  .import-row .import-desc {
+    grid-column: 2 / -1;
+  }
+  .import-loan {
+    grid-template-columns: 20px 1fr;
+  }
+  .import-loan select {
+    grid-column: 2;
+  }
+}

@@ -20,9 +20,10 @@ export const categoryTree: Record<string, string[]> = {
   'Educação': ['Escola e cursos', 'Livros e material'],
   'Pets': ['Ração e petshop', 'Veterinário'],
   'Impostos e taxas': ['Impostos', 'Tarifas bancárias', 'Juros e encargos'],
+  'Dívidas e empréstimos': ['Parcelas de empréstimo', 'Acordos', 'Financiamentos', 'Fatura de cartão'],
   'Doações': [],
   'Outros': [],
-  'Receitas': ['Salário', 'Investimentos', 'Reembolsos e estornos', 'Outras receitas'],
+  'Receitas': ['Salário', 'Investimentos', 'Reembolsos e estornos', 'Empréstimos a receber', 'Outras receitas'],
 };
 const path = (group: string, sub?: string) => (sub ? `${group}${SEPARATOR}${sub}` : group);
 export const defaultCategories: string[] = Object.entries(categoryTree).flatMap(([group, subs]) =>
@@ -38,6 +39,10 @@ const normalize = (s: string) =>
 
 // Ordem importa: a primeira regra que casar vence (delivery antes de corrida e de mercado).
 const rules: [string, RegExp][] = [
+  [path('Dívidas e empréstimos', 'Fatura de cartão'), /^(?:cartao|fatura)\b|pagamento (?:de )?fatura|pgto fatura/],
+  [path('Dívidas e empréstimos', 'Acordos'), /\bacordo\b|renegocia|\bdividas?\b/],
+  [path('Dívidas e empréstimos', 'Parcelas de empréstimo'), /emprestimo|consignado|credito pessoal/],
+  [path('Dívidas e empréstimos', 'Financiamentos'), /financiamento/],
   [path('Alimentação', 'Delivery'), /\bifd\b|ifd\*|ifood|99 ?food|dl\*99|keeta|rappi|aiqfome|ze ?delivery|uber ?\*? ?eats|james delivery|delivery much/],
   [path('Transporte', 'Apps de corrida'), /\buber\b|99 ?(?:app|pop|taxi|tecnologia)|\b99\*|cabify|indriver|\btaxi\b|garupa/],
   [path('Assinaturas', 'Streaming'), /netflix|spotify|disney|hbo|globoplay|paramount|deezer|youtube ?premium|prime ?video|amazon ?prime|crunchyroll|star ?plus|tidal|audible|apple ?tv|kindle unlimited/],
@@ -64,7 +69,7 @@ const rules: [string, RegExp][] = [
   [path('Lazer', 'Jogos'), /steam|playstation|\bpsn\b|xbox|nintendo|epic games/],
   [path('Pets', 'Veterinário'), /veterinar/],
   [path('Pets', 'Ração e petshop'), /petshop|pet shop|\bpet\b|cobasi|petz|racao/],
-  [path('Cuidados pessoais', 'Beleza'), /salao|barbearia|cabeleireir|estetica|manicure|boticario|natura|sephora|avon|eudora|perfumaria/],
+  [path('Cuidados pessoais', 'Beleza'), /salao|barbearia|cabeleireir|estetica|manicure|boticario|\bnatura\b|sephora|\bavon\b|eudora|perfumaria/],
   [path('Casa', 'Cama, mesa e banho'), /camicado|cama ?mesa|toalha|lencol|edredom|travesseiro|cortina/],
   [path('Casa', 'Utensílios e decoração'), /tok ?& ?stok|etna|havan|leroy merlin|utilidades|decorac/],
   [path('Compras', 'Vestuário'), /renner|riachuelo|\bc ?& ?a\b|\bcea\b|zara|hering|centauro|netshoes|nike|adidas|marisa|youcom|calcados|sapataria|arezzo/],
@@ -125,6 +130,12 @@ export function suggestCategory(
   for (const [category, pattern] of kind === 'income' ? incomeRules : rules)
     if (pattern.test(text)) return category;
   if (kind === 'income') return path('Receitas', 'Outras receitas');
+  // O texto é o próprio nome de um grupo ou subcategoria (ex.: categoria vinda de planilha).
+  for (const [group, subs] of Object.entries(categoryTree)) {
+    if (normalize(group) === text.trim()) return group;
+    const sub = subs.find((x) => normalize(x) === text.trim());
+    if (sub) return path(group, sub);
+  }
   return UNCATEGORIZED;
 }
 

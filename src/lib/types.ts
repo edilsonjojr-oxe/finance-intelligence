@@ -49,6 +49,7 @@ export type Contract = {
   category: string;
   adjustment_note: string;
   contract_type?:string; total_amount?:string|null; end_date?:string|null;
+  direction?: "payable" | "receivable";
   renewal_date?:string|null; interest_rate?:string|null; cet?:string|null;
   rate_period?:string; cet_period?:string; penalty_note?:string;
 };

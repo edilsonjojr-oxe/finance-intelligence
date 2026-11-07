@@ -3,7 +3,7 @@ import { cents, validDate } from './money';
 const money=z.string().regex(/^\d{1,11}(\.\d{1,2})?$/).refine(v=>cents(v)>0n);
 const date=z.string().refine(validDate,'Informe uma data válida.');
 export const contractDetailsSchema=z.object({
-  contract_type:z.enum(['service','rent','loan','financing','subscription','other']).default('service'),
+  contract_type:z.enum(['service','rent','loan','agreement','financing','subscription','other']).default('service'),
   total_amount:money.nullable().optional(),end_date:date.nullable().optional(),renewal_date:date.nullable().optional(),
   interest_rate:z.string().regex(/^\d{1,5}(\.\d{1,6})?$/).nullable().optional(),
   cet:z.string().regex(/^\d{1,5}(\.\d{1,6})?$/).nullable().optional(),

@@ -158,7 +158,7 @@ export async function getFinance(user: string): Promise<FinanceState> {
     ).rows;
     const contracts = (
       await db.query<Contract>(
-        "SELECT id,title,counterparty,amount::text,start_date::text,months,due_day,category,adjustment_note,contract_type,total_amount::text,end_date::text,renewal_date::text,interest_rate::text,cet::text,rate_period,cet_period,penalty_note FROM contracts WHERE user_id=$1 ORDER BY created_at DESC",
+        "SELECT id,title,counterparty,amount::text,start_date::text,months,due_day,category,adjustment_note,contract_type,total_amount::text,end_date::text,renewal_date::text,interest_rate::text,cet::text,rate_period,cet_period,penalty_note,direction FROM contracts WHERE user_id=$1 ORDER BY created_at DESC",
         [user],
       )
     ).rows;
@@ -221,6 +221,7 @@ export async function financeAction(
 ) {
   return transaction(user, async (db) => {
     if(action==='intake.confirm') return (await import('./intake')).confirmIntake(db,user,payload);
+    if(['loan.create','sheet.import','obligation.mark_paid','obligation.reopen'].includes(action)) return (await import('./loans')).loanAction(db,user,action,payload);
     if(action==='import.discard') {
       const v=z.object({id}).parse(payload);
       const rows=await db.query("UPDATE import_batches SET status='discarded' WHERE user_id=$1 AND id=$2 AND status='review' RETURNING id",[user,v.id]);
