@@ -59,9 +59,29 @@ async function main() {
   await authenticate("login", "b@exemplo.invalid", password);
   pass("Bloqueio por tentativas é por e-mail: B continua entrando enquanto A está bloqueado");
 
+  const expiry = async () => (await transaction(null, (q) => q.query<{ d: number }>("SELECT round(extract(epoch FROM expires_at-now())/86400)::int AS d FROM sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", [b.id]))).rows[0].d;
+  const tokenB2 = await authenticate("login", "b@exemplo.invalid", password);
+  await transaction(null, (q) => q.query("UPDATE sessions SET expires_at=now()+interval '1 day' WHERE user_id=$1", [b.id]));
+  await authStatus(tokenB2);
+  assert.equal(await expiry(), 7, "Uso renova para 7 dias");
+  await transaction(null, (q) => q.query("UPDATE sessions SET created_at=now()-interval '29 days', expires_at=now()+interval '1 day' WHERE user_id=$1", [b.id]));
+  await authStatus(tokenB2);
+  assert.equal(await expiry(), 1, "Nunca passa de 30 dias desde o login");
+  await transaction(null, (q) => q.query("UPDATE sessions SET expires_at=now()-interval '1 minute' WHERE user_id=$1", [b.id]));
+  assert.equal((await authStatus(tokenB2)).user, null, "Sessão expirada não volta");
+  pass("Sessão deslizante: renova com uso, limite de 30 dias e expiração respeitada");
+
+  const t1 = await authenticate("login", "b@exemplo.invalid", password), t2 = await authenticate("login", "b@exemplo.invalid", password);
+  const { logoutEverywhere } = await import("../src/server/auth");
+  assert.ok((await logoutEverywhere(b.id)) >= 2);
+  assert.equal((await authStatus(t1)).user, null);
+  assert.equal((await authStatus(t2)).user, null);
+  assert.equal((await authStatus(tokenA)).user?.email, "a@exemplo.invalid", "Sessões de outro usuário continuam");
+  pass("Sair de todos os aparelhos encerra só as sessões do próprio usuário");
+
   const db = await database();
   if (db.mode === "local") await db.client.close();
-  console.log("8 cenários de multiusuário aprovados; somente dados sintéticos.");
+  console.log("10 cenários de multiusuário aprovados; somente dados sintéticos.");
 }
 main().catch((error) => {
   console.error(error);

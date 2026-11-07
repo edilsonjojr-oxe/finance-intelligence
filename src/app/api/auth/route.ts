@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticate, authStatus, createInvite, logout, requireUser, sessionCookie } from "@/server/auth";
+import { authenticate, authStatus, createInvite, logout, logoutEverywhere, requireUser, sessionCookie, SESSION_MAX_DAYS } from "@/server/auth";
 import { errorResponse, readBody } from "@/server/http";
 import { secureCookies } from "@/server/deployment-config";
 export const runtime = "nodejs";
@@ -20,6 +20,13 @@ export async function POST(request: NextRequest) {
     if (body.action === "logout") {
       await logout(request.cookies.get(sessionCookie)?.value || "");
       const response = NextResponse.json({ ok: true });
+      response.cookies.delete(sessionCookie);
+      return response;
+    }
+    if (body.action === "logout_all") {
+      const user = await requireUser(request.cookies.get(sessionCookie)?.value);
+      const ended = await logoutEverywhere(user.id);
+      const response = NextResponse.json({ ok: true, ended });
       response.cookies.delete(sessionCookie);
       return response;
     }
@@ -54,7 +61,8 @@ export async function POST(request: NextRequest) {
       secure: secureCookies(),
       sameSite: "strict",
       path: "/",
-      maxAge: 43200,
+      // O servidor controla a validade (7 dias sem uso, 30 no total); o cookie dura o máximo.
+      maxAge: SESSION_MAX_DAYS * 86400,
     });
     return response;
   } catch (error) {

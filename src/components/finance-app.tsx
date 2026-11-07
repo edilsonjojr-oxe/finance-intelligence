@@ -49,6 +49,7 @@ import CandidateEditor from "./candidate-editor";
 import BackupPanel from "./backup-panel";
 import InvitePanel from "./invite-panel";
 import InstallPanel from "./install-panel";
+import SessionPanel from "./session-panel";
 import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
 import LoansPage from "./loans-page";
@@ -2066,6 +2067,7 @@ export default function FinanceApp() {
             <>
               <div className="settings-grid">
                 <InstallPanel/>
+                <SessionPanel/>
                 <BackupPanel/>
                 <InvitePanel/>
                 <CategoryPanel custom={data.categories} act={act}/>

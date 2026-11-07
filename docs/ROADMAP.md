@@ -57,7 +57,8 @@ revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de grava
 - Comparação mês a mês por categoria, evolução de gastos, maiores estabelecimentos.
 - Exportar CSV/Excel do período.
 
-### Fase G — Conta e segurança
+### Fase G — Conta e segurança (sessão deslizante e "sair de todos" feitos; 2FA fora do escopo)
+- Pendente: recuperação de senha por e-mail (requer serviço de envio de e-mail).
 - Recuperação de senha por e-mail, MFA, encerrar sessões em outros aparelhos.
 - Infra: "Enforce SSL" no Supabase, APP_ORIGIN definitivo, backups automáticos.
 

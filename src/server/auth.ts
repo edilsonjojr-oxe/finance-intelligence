@@ -11,6 +11,8 @@ import { transaction, type DB } from "./db";
 import { isHostedDeployment } from "./deployment-config";
 const scrypt = promisify(scryptCallback);
 export const sessionCookie = "fi_session";
+export const SESSION_IDLE_DAYS = 7;
+export const SESSION_MAX_DAYS = 30;
 export const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 export class AppError extends Error {
@@ -45,6 +47,14 @@ export async function authStatus(token?: string) {
           [hash(token)],
         )
       : { rows: [] };
+    // Sessão deslizante: cada uso estende até 7 dias sem atividade, sem passar de 30 dias desde
+    // o login. Grava no máximo uma vez por dia (só quando faltam menos de 6 dias).
+    if (result.rows[0])
+      await db.query(
+        `UPDATE sessions SET expires_at=LEAST(now()+interval '${SESSION_IDLE_DAYS} days', created_at+interval '${SESSION_MAX_DAYS} days')
+         WHERE token_hash=$1 AND expires_at < now()+interval '${SESSION_IDLE_DAYS - 1} days'`,
+        [hash(token!)],
+      );
     return {
       needsSetup: users.rows[0].count === "0",
       requiresSetupToken: !!process.env.SETUP_TOKEN || isHostedDeployment(),
@@ -179,7 +189,7 @@ export async function authenticate(
     const token = randomBytes(32).toString("hex");
     await db.query("DELETE FROM sessions WHERE expires_at < now()");
     await db.query(
-      "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '12 hours')",
+      `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '${SESSION_IDLE_DAYS} days')`,
       [hash(token), user.id],
     );
     await db.query("UPDATE login_attempts SET attempts=0 WHERE key=$1", [`email:${hash(email)}`]);
@@ -190,4 +200,16 @@ export async function logout(token: string) {
   await transaction(null, (db) =>
     db.query("DELETE FROM sessions WHERE token_hash=$1", [hash(token)]),
   );
+}
+/** Encerra todas as sessões do usuário (todos os aparelhos), inclusive a atual. */
+export async function logoutEverywhere(userId: string) {
+  return transaction(null, async (db) => {
+    const r = await db.query("DELETE FROM sessions WHERE user_id=$1 RETURNING token_hash", [userId]);
+    await db.query("SELECT set_config('app.user_id',$1,true)", [userId]);
+    await db.query(
+      "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'auth.logout_all',NULL,$3)",
+      [randomUUID(), userId, JSON.stringify({ sessions: r.rows.length })],
+    );
+    return r.rows.length;
+  });
 }
