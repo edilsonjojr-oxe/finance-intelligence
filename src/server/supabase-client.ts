@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { secureCookies } from './deployment-config';
 
 export function supabaseConfiguration() {
   const url=process.env.SUPABASE_URL;
@@ -14,7 +15,7 @@ export function supabaseConfiguration() {
 export async function supabaseServerClient() {
   const {url,key}=supabaseConfiguration(),store=await cookies();
   return createServerClient(url,key,{
-    cookieOptions:{httpOnly:true,sameSite:'lax',secure:process.env.COOKIE_SECURE==='true',path:'/'},
+    cookieOptions:{httpOnly:true,sameSite:'lax',secure:secureCookies(),path:'/'},
     cookies:{getAll:()=>store.getAll(),setAll:values=>{
       try{for(const {name,value,options} of values)store.set(name,value,{...options,httpOnly:true});}
       catch{/* Server Components: o Proxy já renovou e propagou os cookies. */}

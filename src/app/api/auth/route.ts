@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticate, authStatus, logout, sessionCookie } from "@/server/auth";
 import { errorResponse, readBody } from "@/server/http";
+import { secureCookies } from "@/server/deployment-config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({ ok: true });
     response.cookies.set(sessionCookie, token, {
       httpOnly: true,
-      secure: process.env.COOKIE_SECURE === "true",
+      secure: secureCookies(),
       sameSite: "strict",
       path: "/",
       maxAge: 43200,

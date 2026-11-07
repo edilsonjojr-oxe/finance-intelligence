@@ -3,7 +3,7 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { Pool, types } from "pg";
 import { migrations, migrationSQL } from './migrations';
-import { assertPersistentDatabase, isHostedDeployment } from './deployment-config';
+import { assertPersistentDatabase, databaseTLS, isHostedDeployment } from './deployment-config';
 types.setTypeParser(1082, (value) => value);
 export interface DB {
   query<T = Record<string, unknown>>(
@@ -19,9 +19,14 @@ const globalDB = globalThis as unknown as {
 async function initialize(): Promise<Local | Remote> {
   assertPersistentDatabase();
   if (process.env.DATABASE_URL) {
+    // Sem sslmode na URL: ele sobrescreveria a configuração TLS abaixo.
+    const url = new URL(process.env.DATABASE_URL);
+    url.searchParams.delete('sslmode');
     const pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      max: 5,
+      connectionString: url.toString(),
+      ssl: databaseTLS(),
+      // Funções serverless abrem poucas conexões; o pooler do provedor multiplexa.
+      max: isHostedDeployment() ? 2 : 5,
     });
     if(isHostedDeployment()) {
       const role=await pool.query("SELECT rolsuper,rolbypassrls,rolcreatedb,rolcreaterole FROM pg_roles WHERE rolname=current_user");

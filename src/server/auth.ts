@@ -7,6 +7,7 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import { transaction } from "./db";
+import { isHostedDeployment } from "./deployment-config";
 const scrypt = promisify(scryptCallback);
 export const sessionCookie = "fi_session";
 export const hash = (value: string) =>
@@ -52,7 +53,7 @@ export async function authStatus(token?: string) {
     return {
       provider: "local" as const,
       needsSetup: users.rows[0].count === "0",
-      requiresSetupToken: !!process.env.SETUP_TOKEN || process.env.CLOUD_DEPLOYMENT==='true',
+      requiresSetupToken: !!process.env.SETUP_TOKEN || isHostedDeployment(),
       user: result.rows[0] || null,
     };
   });
@@ -69,7 +70,7 @@ export async function authenticate(
   name = "",
   setupToken = '',
 ) {
-  if(mode==='setup' && (process.env.SETUP_TOKEN || process.env.CLOUD_DEPLOYMENT==='true')) {
+  if(mode==='setup' && (process.env.SETUP_TOKEN || isHostedDeployment())) {
     if(!process.env.SETUP_TOKEN || !timingSafeEqual(Buffer.from(hash(setupToken)),Buffer.from(hash(process.env.SETUP_TOKEN))))throw new AppError('Código de ativação inválido.',403);
   }
   // O limite global persiste e impede contornar bloqueio trocando o e-mail.
