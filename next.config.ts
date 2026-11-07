@@ -16,6 +16,18 @@ const config: NextConfig = {
           { key: "Cache-Control", value: "no-store" },
         ],
       },
+      // Exceções só para arquivos do app instalável (sem dados). Entradas posteriores
+      // sobrescrevem a mesma chave; todo o resto continua no-store.
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Service-Worker-Allowed", value: "/" },
+        ],
+      },
+      { source: "/manifest.webmanifest", headers: [{ key: "Cache-Control", value: "public, max-age=3600" }] },
+      { source: "/icons/:file", headers: [{ key: "Cache-Control", value: "public, max-age=604800" }] },
     ];
   },
 };
