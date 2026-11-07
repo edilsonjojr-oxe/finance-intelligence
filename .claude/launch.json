@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-sintetico",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", "3002"],
+      "env": {
+        "DATABASE_URL": "",
+        "FINANCE_DATA_DIR": ".data/ui-sintetico",
+        "APP_ORIGIN": "",
+        "SETUP_TOKEN": "",
+        "CLOUD_DEPLOYMENT": ""
+      },
+      "port": 3002
+    }
+  ]
+}
