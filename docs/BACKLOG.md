@@ -93,5 +93,5 @@ completo; membro sem conta (só nome) incluído, vinculável depois.
 - [-] Gmail (faturas por e-mail) — não será feito, decisão do usuário
 - [-] Consulta NFC-e SEFAZ-RS — não será feito, decisão do usuário
 
-> Bloco 11 pronto em 2026-11-08: migração 011 (aguardando aplicação no Supabase). Testes: npm run test:reset, npm run test:advisor.
+> Bloco 11 publicado em 2026-11-08: migração 011 aplicada no Supabase. Testes: npm run test:reset, npm run test:advisor.
 > Configurar na Vercel: GEMINI_API_KEY (consultor, Google Gemini plano gratuito; opcional GEMINI_MODEL) e SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (e-mail).
