@@ -42,7 +42,8 @@ import {
   Users,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
-import { categoryBreakdown, forecast, isCard, isLiquid, nextDueDate, totals } from "@/lib/finance";
+import { cardBillSchedule, categoryBreakdown, forecast, isCard, isLiquid, nextDueDate, totals, type CategoryGroupTotal } from "@/lib/finance";
+import { lastMonths } from "@/lib/planning";
 import { transactionsCsv } from "@/lib/planning";
 import { cardStatus } from "@/lib/card-cycle";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
@@ -583,6 +584,7 @@ export default function FinanceApp() {
     [accountType, setAccountType] = useState("checking"),
     [transferTo, setTransferTo] = useState(""),
     [busy, setBusy] = useState(false);
+  const [catMonths, setCatMonths] = useState(3);
   const [importTab, setImportTab] = useState<"document" | "sheet" | "statement" | "receipt">("document");
   const [days, setDays] = useState(30),
     [simulation, setSimulation] = useState(""),
@@ -829,6 +831,15 @@ export default function FinanceApp() {
   const ending = projection.at(-1)!.balance;
   const openObligations = data.obligations.filter((o) => o.status === "open" && o.stage !== 'estimated');
   const overdue = openObligations.filter((o) => o.due_date < data.today);
+  // Faturas de cartão como compromissos: vencidas (não pagas) e próximas.
+  const bills = cardBillSchedule(data.accounts, data.transactions, data.today).filter((b) => b.kind !== "installment");
+  const overdueBills = bills.filter((b) => b.overdue);
+  type Upcoming = { key: string; date: string; title: string; detail: string; amount: string; income: boolean; overdue: boolean; cardId?: string; obligationId?: string };
+  const upcoming: Upcoming[] = [
+    ...bills.map((b) => ({ key: `bill-${b.accountId}-${b.kind}`, date: b.dueDate, title: `Fatura ${b.name}`, detail: b.overdue ? "Fatura vencida e não paga" : b.kind === "open" ? "Fatura aberta" : "Fatura fechada", amount: decimal(b.amount), income: false, overdue: b.overdue, cardId: b.accountId })),
+    ...openObligations.map((o) => ({ key: o.id, date: o.due_date, title: o.description, detail: o.category, amount: o.amount, income: o.kind === "income", overdue: o.due_date < data.today, obligationId: o.id })),
+  ].sort((a, b) => (a.overdue === b.overdue ? a.date.localeCompare(b.date) : a.overdue ? -1 : 1));
+  const overdueTotal = upcoming.filter((u) => u.overdue && !u.income).reduce((n, u) => n + cents(u.amount), 0n);
   const pendingReview = data.batches.some((b) => b.status === "review");
   // Conta "só divisão" fica sempre em Dividir, mesmo se o endereço (#/...) apontar outra tela.
   if (splitOnly && page !== "shared") setPage("shared");
@@ -855,8 +866,28 @@ export default function FinanceApp() {
       `${t.description} ${t.category}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
   // Por grupo (Alimentação, Casa…) com subcategorias; lançamentos divididos entram pelas partes.
-  const categories = categoryBreakdown(data.transactions, data.splits, month);
-  const expenses = cents(sum.expense);
+  // Despesas por categoria no período escolhido (mês atual ou últimos meses), terminando no mês filtrado.
+  const categories = (() => {
+    const merged = new Map<string, Map<string, bigint>>();
+    for (const m of lastMonths(month, catMonths))
+      for (const g of categoryBreakdown(data.transactions, data.splits, m)) {
+        const subs = merged.get(g.group) || new Map<string, bigint>();
+        for (const sub of g.subs) subs.set(sub.name, (subs.get(sub.name) || 0n) + sub.total);
+        merged.set(g.group, subs);
+      }
+    return [...merged.entries()]
+      .map(([group, subs]): CategoryGroupTotal => ({ group, total: [...subs.values()].reduce((n, v) => n + v, 0n), subs: [...subs.entries()].map(([name, total]) => ({ name, total })).sort((a, b) => (a.total > b.total ? -1 : 1)) }))
+      .sort((a, b) => (a.total > b.total ? -1 : 1));
+  })();
+  const expenses = categories.reduce((n, c) => n + c.total, 0n);
+  // Composição da projeção até o primeiro dia negativo (para o alerta explicar o número).
+  const riskBreakdown = (() => {
+    if (!risk) return null;
+    const until = projection.filter((p) => p.date <= risk.date);
+    const income = until.reduce((n, p) => n + cents(p.income), 0n), out = until.reduce((n, p) => n + cents(p.expense), 0n);
+    const cardOut = cardBillSchedule(data.accounts, data.transactions, data.today).filter((b) => b.date <= risk.date).reduce((n, b) => n + b.amount, 0n);
+    return { income, cardOut, otherOut: out - cardOut };
+  })();
   const modalTitle = {
     account: "Adicionar conta",
     movement: "Nova movimentação",
@@ -1158,21 +1189,38 @@ export default function FinanceApp() {
                   </button>
                 </div>
               )}
-              {(risk || overdue.length > 0) && (
+              {(risk || overdue.length > 0 || overdueBills.length > 0) && (
                 <div className="alerts">
-                  {risk && (
-                    <button className="alert warning" onClick={() => navigate("forecast")}>
-                      <Bell size={17} />
-                      <span><strong>Saldo previsto negativo</strong> {brl(risk.balance)} em {dateLabel(risk.date)}. Revise os compromissos do período.</span>
-                      <ArrowRight size={15} />
-                    </button>
-                  )}
+                  {overdueBills.map((b) => (
+                    <div key={b.accountId} className="alert danger">
+                      <CreditCard size={17} />
+                      <span><strong>Fatura {b.name} vencida</strong> {brl(decimal(b.amount))} venceu em {dateLabel(b.dueDate)} e não tem pagamento registrado.{b.estimated ? " Fechamento estimado: informe o dia de fechamento no cartão para mais precisão." : ""}</span>
+                      <button className="button primary" onClick={() => payCard(b.accountId)}>Registrar pagamento</button>
+                    </div>
+                  ))}
                   {overdue.length > 0 && (
                     <button className="alert warning" onClick={() => navigate("obligations")}>
                       <CalendarDays size={17} />
                       <span><strong>{overdue.length} compromisso(s) em atraso</strong> Entram no primeiro dia da projeção.</span>
                       <ArrowRight size={15} />
                     </button>
+                  )}
+                  {risk && riskBreakdown && (
+                    <details className="alert warning alert-details">
+                      <summary>
+                        <Bell size={17} />
+                        <span><strong>Saldo previsto negativo</strong> {brl(risk.balance)} em {dateLabel(risk.date)}. Ver a conta</span>
+                      </summary>
+                      <ul className="alert-math">
+                        <li><span>Saldo hoje nas contas</span><strong>{brl(balance)}</strong></li>
+                        {riskBreakdown.income > 0n && <li><span>+ Entradas previstas até {dateLabel(risk.date)}</span><strong className="positive">{brl(decimal(riskBreakdown.income))}</strong></li>}
+                        {riskBreakdown.cardOut > 0n && <li><span>− Faturas de cartão (vencidas entram hoje)</span><strong>{brl(decimal(riskBreakdown.cardOut))}</strong></li>}
+                        {riskBreakdown.otherOut > 0n && <li><span>− Outros compromissos a pagar</span><strong>{brl(decimal(riskBreakdown.otherOut))}</strong></li>}
+                        <li className="total"><span>= Saldo previsto em {dateLabel(risk.date)}</span><strong className="negative">{brl(risk.balance)}</strong></li>
+                      </ul>
+                      <p className="form-help">Considera só o que está cadastrado. Se o saldo das contas estiver desatualizado, corrija em Contas e cartões; se uma fatura já foi paga, registre o pagamento.</p>
+                      <div className="row-actions"><button className="text-button" onClick={() => navigate("forecast")}>Ver projeção dia a dia <ArrowRight size={14} /></button></div>
+                    </details>
                   )}
                 </div>
               )}
@@ -1265,42 +1313,30 @@ export default function FinanceApp() {
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>Próximos compromissos</h2>
+                      <h2>Compromissos e faturas</h2>
+                      {overdueTotal > 0n && <p className="negative">Em atraso: {brl(decimal(overdueTotal))}</p>}
                     </div>
-                    <button
-                      className="text-button"
-                      onClick={() => navigate("obligations")}
-                    >
+                    <button className="text-button" onClick={() => navigate("obligations")}>
                       Ver todos <ArrowRight size={14} />
                     </button>
                   </div>
-                  {openObligations.length ? (
+                  {upcoming.length ? (
                     <div className="commitment-list">
-                      {openObligations.slice(0, 4).map((o) => (
-                        <div className="commitment-row" key={o.id}>
+                      {upcoming.slice(0, 6).map((u) => (
+                        <div className={`commitment-row ${u.overdue ? "is-overdue" : ""}`} key={u.key}>
                           <div className="date-tile">
-                            <strong>{o.due_date.slice(8)}</strong>
-                            <span>
-                              {new Date(o.due_date + "T12:00:00Z")
-                                .toLocaleDateString("pt-BR", {
-                                  month: "short",
-                                  timeZone: "UTC",
-                                })
-                                .replace(".", "")}
-                            </span>
+                            <strong>{u.date.slice(8)}</strong>
+                            <span>{new Date(u.date + "T12:00:00Z").toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" }).replace(".", "")}</span>
                           </div>
                           <div className="grow">
-                            <strong>{o.description}</strong>
-                            <small>
-                              {o.category}{" "}
-                              {o.due_date < data.today ? "· Em atraso" : ""}
-                            </small>
+                            <strong>{u.title}</strong>
+                            <small>{u.overdue ? <span className="negative">Atrasado · </span> : null}{u.detail}</small>
                           </div>
-                          <strong
-                            className={o.kind === "income" ? "positive" : ""}
-                          >
-                            {brl(o.amount)}
-                          </strong>
+                          <div className="commitment-side">
+                            <strong className={u.income ? "positive" : u.overdue ? "negative" : ""}>{brl(u.amount)}</strong>
+                            {u.cardId && <button className="text-button" onClick={() => payCard(u.cardId!)}>Pagar</button>}
+                            {u.obligationId && <button className="text-button" onClick={() => open("settle", u.obligationId)}>{u.income ? "Recebi" : "Paguei"}</button>}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1309,14 +1345,7 @@ export default function FinanceApp() {
                       icon={CalendarDays}
                       title="Nenhum vencimento cadastrado"
                       description="Organize suas próximas contas e receitas."
-                      action={
-                        <button
-                          className="text-button"
-                          onClick={() => open("obligation")}
-                        >
-                          Adicionar compromisso <Plus size={14} />
-                        </button>
-                      }
+                      action={<button className="text-button" onClick={() => open("obligation")}>Adicionar compromisso <Plus size={14} /></button>}
                     />
                   )}
                 </section>
@@ -1324,8 +1353,13 @@ export default function FinanceApp() {
                   <div className="panel-heading">
                     <div>
                       <h2>Despesas por categoria</h2>
-                      <p>Toque para ver as subcategorias</p>
+                      <p>{brl(decimal(expenses))} · toque para ver as subcategorias</p>
                     </div>
+                    <select aria-label="Período das despesas por categoria" value={catMonths} onChange={(e) => setCatMonths(Number(e.target.value))}>
+                      <option value={1}>Mês selecionado</option>
+                      <option value={3}>Últimos 3 meses</option>
+                      <option value={6}>Últimos 6 meses</option>
+                    </select>
 
                   </div>
                   {categories.length ? (
@@ -1368,7 +1402,7 @@ export default function FinanceApp() {
                   ) : (
                     <Empty
                       icon={FileCheck2}
-                      title="Nenhuma despesa no mês"
+                      title="Nenhuma despesa no período"
                       description="As despesas realizadas aparecem aqui por categoria."
                     />
                   )}

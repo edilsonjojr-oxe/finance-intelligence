@@ -1,5 +1,5 @@
 import { addDays, cents, decimal } from "./money";
-import { cardStatus, closings, dueAfter, futureInstallments } from "./card-cycle";
+import { cardStatus, closingDayOf, closings, dueAfter, futureInstallments } from "./card-cycle";
 import type { Account, Movement, Obligation, ForecastPoint, Split } from "./types";
 export function balanceFor(
   account: Pick<Account, "id" | "opening_balance" | "opening_date">,
@@ -102,22 +102,7 @@ export function forecast(
   let balance = accounts
     .filter(isLiquid)
     .reduce((sum, a) => sum + cents(a.balance), 0n);
-  const cardBills: { date: string; amount: bigint }[] = [];
-  for (const a of accounts.filter(isCard)) {
-    const st = cardStatus(a, transactions, today);
-    if (a.closing_day && a.due_day) {
-      // Fatura fechada no seu vencimento; a aberta no vencimento seguinte.
-      if (st.closed > 0n) cardBills.push({ date: st.closedDue! < today ? today : st.closedDue!, amount: st.closed });
-      if (st.open > 0n) cardBills.push({ date: st.openDue!, amount: st.open });
-    } else if (st.debt > 0n) cardBills.push({ date: a.due_day ? nextDueDate(today, a.due_day) : today, amount: st.debt });
-    // Parcelas futuras ("PARC 04/10"…) entram na fatura do mês em que caem.
-    for (const f of futureInstallments(transactions, new Set([a.id]))) {
-      const date = a.closing_day && a.due_day
-        ? dueAfter(f.date <= closings(f.date, a.closing_day).last ? closings(f.date, a.closing_day).last : closings(f.date, a.closing_day).next, a.due_day)
-        : a.due_day ? nextDueDate(f.date, a.due_day) : f.date;
-      cardBills.push({ date, amount: cents(f.amount) });
-    }
-  }
+  const cardBills = cardBillSchedule(accounts, transactions, today);
   const result: ForecastPoint[] = [];
   for (let day = 0; day < days; day++) {
     const date = addDays(today, day);
@@ -144,4 +129,33 @@ export function forecast(
     });
   }
   return result;
+}
+
+export type CardBill = { accountId: string; name: string; date: string; dueDate: string; amount: bigint; kind: "closed" | "open" | "installment"; overdue: boolean; estimated: boolean };
+/**
+ * Pagamentos de fatura previstos: fatura fechada (no vencimento; se já venceu, hoje e marcada
+ * como atrasada), fatura aberta no vencimento seguinte e parcelas futuras na fatura do mês delas.
+ * Sem dia de fechamento informado, usa a estimativa de 7 dias antes do vencimento.
+ */
+export function cardBillSchedule(accounts: Account[], transactions: Movement[], today: string): CardBill[] {
+  const bills: CardBill[] = [];
+  for (const a of accounts.filter(isCard)) {
+    const st = cardStatus(a, transactions, today);
+    const closingDay = closingDayOf(a);
+    const base = { accountId: a.id, name: a.name, estimated: st.estimatedClosing };
+    if (closingDay && a.due_day) {
+      if (st.closed > 0n) bills.push({ ...base, date: st.closedDue! < today ? today : st.closedDue!, dueDate: st.closedDue!, amount: st.closed, kind: "closed", overdue: st.closedDue! < today });
+      if (st.open > 0n) bills.push({ ...base, date: st.openDue!, dueDate: st.openDue!, amount: st.open, kind: "open", overdue: false });
+    } else if (st.debt > 0n) {
+      const due = a.due_day ? nextDueDate(today, a.due_day) : today;
+      bills.push({ ...base, date: due, dueDate: due, amount: st.debt, kind: "closed", overdue: false });
+    }
+    for (const f of futureInstallments(transactions, new Set([a.id]))) {
+      const date = closingDay && a.due_day
+        ? dueAfter(f.date <= closings(f.date, closingDay).last ? closings(f.date, closingDay).last : closings(f.date, closingDay).next, a.due_day)
+        : a.due_day ? nextDueDate(f.date, a.due_day) : f.date;
+      bills.push({ ...base, date, dueDate: date, amount: cents(f.amount), kind: "installment", overdue: false });
+    }
+  }
+  return bills;
 }

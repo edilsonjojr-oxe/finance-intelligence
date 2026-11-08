@@ -58,7 +58,12 @@ export type CardStatus = {
   debt: bigint; closed: bigint; open: bigint; future: bigint;
   closedDue: string | null; openCloses: string | null; openDue: string | null;
   available: bigint | null; usage: number | null;
+  /** Fechamento estimado (cartão sem dia de fechamento informado): vencimento − 7 dias. */
+  estimatedClosing: boolean;
 };
+/** Dia de fechamento: o informado ou, sem ele, uma estimativa de 7 dias antes do vencimento. */
+export const closingDayOf = (card: Pick<Account, 'closing_day' | 'due_day'>) =>
+  card.closing_day || (card.due_day ? (card.due_day > 7 ? card.due_day - 7 : card.due_day + 23) : null);
 /**
  * Situação do cartão hoje. Sem dia de fechamento, toda a dívida é tratada como uma fatura só.
  * `closed` = compras até o último fechamento ainda não pagas; `open` = compras depois dele.
@@ -67,8 +72,9 @@ export function cardStatus(card: Pick<Account, 'id' | 'balance' | 'closing_day' 
   const debt = cents(card.balance) < 0n ? -cents(card.balance) : 0n;
   let open = 0n;
   let closedDue: string | null = null, openCloses: string | null = null, openDue: string | null = null;
-  if (card.closing_day) {
-    const { last, next } = closings(today, card.closing_day);
+  const closingDay = closingDayOf(card);
+  if (closingDay) {
+    const { last, next } = closings(today, closingDay);
     for (const t of transactions)
       if (t.status === 'posted' && t.account_id === card.id && t.date > last && t.date <= today && t.kind !== 'transfer')
         open += t.kind === 'expense' ? cents(t.amount) : -cents(t.amount);
@@ -84,6 +90,7 @@ export function cardStatus(card: Pick<Account, 'id' | 'balance' | 'closing_day' 
     debt, closed: debt - open, open, future, closedDue, openCloses, openDue,
     available: limit === null ? null : limit - used,
     usage: limit ? Number((used * 1000n) / limit) / 10 : null,
+    estimatedClosing: !card.closing_day && !!closingDay,
   };
 }
 export const fmtCents = (v: bigint) => decimal(v);

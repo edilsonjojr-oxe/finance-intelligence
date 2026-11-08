@@ -3179,3 +3179,19 @@ nav button.active::before { background: var(--gold); }
 /* Camadas: menu lateral acima do fundo escurecido, da barra inferior e do topo (corrige toque no celular). */
 .sidebar { z-index: 210; }
 .sidebar-scrim { z-index: 200; }
+/* Alertas da tela inicial: fatura vencida e conta do saldo previsto */
+.alert.danger { border-color: rgba(242, 139, 130, 0.45); background: rgba(242, 139, 130, 0.08); color: var(--danger); flex-wrap: wrap; }
+.alert.danger strong { color: var(--danger); }
+.alert.danger .button { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+.alert-details { display: block; }
+.alert-details > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; }
+.alert-details > summary::-webkit-details-marker { display: none; }
+.alert-details > summary span { flex: 1; color: var(--text); }
+.alert-math { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.alert-math li { display: flex; justify-content: space-between; gap: 12px; color: var(--text); }
+.alert-math li strong { font-variant-numeric: tabular-nums; color: var(--heading); white-space: nowrap; }
+.alert-math li.total { border-top: 1px solid rgba(232, 178, 122, 0.35); padding-top: 6px; font-weight: 600; }
+.commitment-row.is-overdue .date-tile { background: rgba(242, 139, 130, 0.12); }
+.commitment-row.is-overdue .date-tile span { color: var(--danger); }
+.commitment-side { display: grid; justify-items: end; gap: 2px; }
+.commitment-side .text-button { font-size: 12.5px; }
