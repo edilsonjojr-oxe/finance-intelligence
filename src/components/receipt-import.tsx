@@ -6,6 +6,7 @@ import { addDays, brl, cents, decimal } from '@/lib/money';
 import { parseReceipt, productMemory, receiptParts, type ReceiptItem } from '@/lib/receipt';
 import { accountLabel } from './card-fields';
 import Hint from './hint';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 const clean = (v: string) => (v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v);
@@ -88,7 +89,7 @@ export default function ReceiptImport({ data, act }: { data: FinanceState; act: 
               <div className="receipt-row" key={it.key}>
                 <span>{it.description}</span>
                 <input inputMode="decimal" aria-label="Valor" value={it.amount} onChange={(e) => set(i, { amount: e.target.value })} />
-                <input list="category-list" aria-label="Categoria" autoComplete="off" value={it.category} onChange={(e) => set(i, { category: e.target.value })} />
+                <CategorySelect hideLabel value={it.category} onChange={(v) => set(i, { category: v })} />
                 <button type="button" className="icon-button" aria-label={`Remover ${it.description}`} onClick={() => setItems((cur) => cur.filter((_, k) => k !== i))}><Trash2 size={14} /></button>
               </div>
             ))}

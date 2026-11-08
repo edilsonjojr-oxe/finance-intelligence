@@ -4,6 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, Camera, Check, HandCoins, Plus, RotateCcw,
 import type { Contract, FinanceState, Obligation } from '@/lib/types';
 import { addDays, brl, cents, decimal, recurrenceDates } from '@/lib/money';
 import { parseScheduleText } from '@/lib/spreadsheet-import';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 type Row = { date: string; amount: string; paid: boolean };
@@ -73,7 +74,7 @@ function LoanForm({ data, act, onDone }: { data: FinanceState; act: Act; onDone:
         <label className="field"><span>{direction === 'payable' ? 'De quem (pessoa ou instituição)' : 'Para quem'}</span><input name="counterparty" required maxLength={120} placeholder="Ex.: Laura, Santander" /></label>
         <label className="field"><span>Descrição (opcional)</span><input name="title" maxLength={120} placeholder="Ex.: Empréstimo Apple Watch" /></label>
         <label className="field"><span>Tipo</span><select name="contract_type" defaultValue="loan"><option value="loan">Empréstimo</option><option value="agreement">Acordo de dívida</option><option value="financing">Financiamento</option></select></label>
-        <label className="field"><span>Categoria (opcional)</span><input name="category" list="category-list" maxLength={80} autoComplete="off" placeholder={direction === 'payable' ? 'Dívidas e empréstimos / Parcelas de empréstimo' : 'Receitas / Empréstimos a receber'} /></label>
+        <CategorySelect name="category" label="Categoria (opcional)" />
       </div>
       <div className="auth-switch three" role="tablist" aria-label="Como informar as parcelas">
         <button type="button" role="tab" aria-selected={mode === 'total'} className={mode === 'total' ? 'active' : ''} onClick={() => setMode('total')}>Valor total</button>

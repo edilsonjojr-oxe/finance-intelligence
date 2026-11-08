@@ -4,6 +4,7 @@ import { Check, Plus, Trash2 } from 'lucide-react';
 import type { Movement, Split } from '@/lib/types';
 import { brl, cents, decimal } from '@/lib/money';
 import { DIVIDED, UNCATEGORIZED } from '@/lib/categorize';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 type Part = { category: string; amount: string; description: string };
@@ -58,21 +59,14 @@ export default function MovementCategoryEditor({ movement: t, splits, act, onClo
         <button type="button" role="tab" aria-selected={divide} className={divide ? 'active' : ''} onClick={() => setDivide(true)}>Dividir entre categorias</button>
       </div>
       {!divide ? (
-        <label className="field">
-          <span>Categoria</span>
-          <input list="category-list" required maxLength={80} autoComplete="off" value={single} onChange={(e) => setSingle(e.target.value)} onFocus={(e) => e.currentTarget.select()} />
-          <small>Digite para buscar, ou crie no formato “Grupo / Subcategoria”, por exemplo “Alimentação / Lanche do trabalho”.</small>
-        </label>
+        <CategorySelect value={single} onChange={setSingle} />
       ) : (
         <>
           <p className="form-help">Ex.: mercado R$ 300 = R$ 240 Mercado + R$ 60 Cama, mesa e banho.</p>
           {parts.map((p, i) => (
             <fieldset className="split-row" key={i}>
               <legend>Parte {i + 1}</legend>
-              <label className="field">
-                <span>Categoria</span>
-                <input list="category-list" required maxLength={80} autoComplete="off" value={p.category} onChange={(e) => set(i, { category: e.target.value })} onFocus={(e) => e.currentTarget.select()} />
-              </label>
+              <CategorySelect value={p.category} onChange={(v) => set(i, { category: v })} />
               <label className="field">
                 <span>Valor (R$)</span>
                 <input inputMode="decimal" required pattern="[0-9.,]+" maxLength={18} value={p.amount} onChange={(e) => set(i, { amount: e.target.value })} />

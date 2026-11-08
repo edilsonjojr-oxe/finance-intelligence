@@ -7,6 +7,7 @@ import { computeSplit, type SplitMode } from '@/lib/split';
 import { parseReceipt } from '@/lib/receipt';
 import { accountLabel } from './card-fields';
 import { isLiquid } from '@/lib/finance';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 const clean = (v: string) => (v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v);
@@ -102,7 +103,7 @@ function ExpenseForm({ group, data, act, edit, onDone }: { group: SharedGroup; d
         <label className="field"><span>Descrição</span><input required maxLength={160} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel" /></label>
         <label className="field"><span>Total (R$)</span><input required inputMode="decimal" pattern="[0-9.,]+" value={total} onChange={(e) => setTotal(e.target.value)} /></label>
         <label className="field"><span>Data</span><input type="date" required max={data.today} value={date} onChange={(e) => setDate(e.target.value)} /></label>
-        <label className="field"><span>Categoria</span><input list="category-list" autoComplete="off" maxLength={80} value={category} onChange={(e) => setCategory(e.target.value)} /></label>
+        <CategorySelect value={category} onChange={setCategory} />
         <label className="field"><span>Quem pagou</span><select value={payer} onChange={(e) => setPayer(e.target.value)}>{active.map((m) => <option key={m.id} value={m.id}>{m.me ? 'Eu' : m.name}</option>)}</select></label>
         {askAccount && <label className="field"><span>Saiu de qual conta</span><select required value={account} onChange={(e) => setAccount(e.target.value)}><option value="">Selecione</option>{data.accounts.filter(isLiquid).concat(data.accounts.filter((a) => a.type === 'credit_card')).map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}</select></label>}
       </div>

@@ -2994,3 +2994,15 @@ nav button, .settings-link { font-size: 14px; padding: 10px 13px; color: #c3d4ca
   .login-copy h1 { font-size: 30px; letter-spacing: -1px; margin: 8px 0; }
   .login-copy > p { display: none; }
 }
+/* Categoria em duas listas */
+.category-select { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; }
+.category-select .field { min-width: 0; }
+.category-select select, .category-select input { width: 100%; min-width: 0; }
+.receipt-row { grid-template-columns: minmax(0, 1.2fr) 90px minmax(0, 2fr) 32px; }
+.category-select select { padding: 7px 8px; }
+@media (max-width: 560px) { .receipt-row .category-select, .import-row .category-select { min-width: 0; grid-column: 1 / -1; } }
+/* Repetidos na importação */
+.dup-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #ecd3b8; background: #fbf3e8; color: #6b4a2a; border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; font-size: 14px; }
+.intake-item legend { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.intake-item.is-duplicate { background: var(--surface-2); }
+.dup-note { font-size: 13px; color: #6b4a2a; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }

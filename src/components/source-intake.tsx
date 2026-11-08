@@ -8,6 +8,7 @@ import { buildMemory,suggestCategory,UNCATEGORIZED } from '@/lib/categorize';
 import type { ExtractedItem } from '@/lib/intake';
 import { CardFields,accountLabel } from './card-fields';
 import Hint from './hint';
+import CategorySelect from './category-select';
 type Act=(action:string,payload:unknown,message?:string)=>Promise<unknown>;
 const fields=[['title','Título'],['counterparty','Instituição / fornecedor'],['amount','Valor mensal / da parcela (R$)'],['total_amount','Valor contratado (R$)'],['start_date','Início da vigência'],['end_date','Fim da vigência'],['renewal_date','Data de renovação'],['months','Quantidade de parcelas'],['due_day','Dia de vencimento'],['interest_rate','Juros (%)'],['cet','CET (%)'],['adjustment_note','Condição de reajuste'],['penalty_note','Multas e encargos']] as const;
 export function ContractTerms({values={}}:{values?:Record<string,string>}) {
@@ -65,6 +66,26 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
     finally{text='';form.reset();setBusy(false);controller.current=null;}
   }
   const update=(index:number,changes:Partial<ExtractedItem>)=>setRows(current=>current.map((r,i)=>i===index?{...r,...changes}:r));
+  // Repetidos: mesmo critério do servidor (data, valor, tipo e conta; ou compromisso com mesmo vencimento).
+  // Quem já existe NÃO é lançado, a menos que você marque "Lançar mesmo assim".
+  const toCents=(v:string)=>{try{return cents(cleanMoney(v));}catch{return null;}};
+  const day=(d:string)=>d.split('-').reverse().join('/');
+  const targetAccount=invoice?(cardTarget&&cardTarget!=='new'?cardTarget:''):account;
+  function existing(r:ExtractedItem):string|undefined {
+    const v=toCents(r.amount);if(v===null||!r.date)return undefined;
+    const paid=invoice||r.event_type==='paid';
+    if(paid&&!r.transaction_id&&targetAccount){const t=data.transactions.find(t=>t.status==='posted'&&t.account_id===targetAccount&&t.date===r.date&&t.kind===r.kind&&cents(t.amount)===v);if(t)return `${t.description} · ${day(t.date)} · ${brl(t.amount)}`;}
+    if(r.obligation_id||r.transaction_id)return undefined;
+    const o=data.obligations.find(o=>o.status!=='cancelled'&&o.kind===r.kind&&o.due_date===r.date&&cents(o.amount)===v);
+    return o?`compromisso ${o.description} · ${day(o.due_date)} · ${brl(o.amount)}`:undefined;
+  }
+  const dups=rows.map(existing);
+  const dupCount=dups.filter(Boolean).length,dupForced=rows.filter((r,i)=>dups[i]&&r.confirm_distinct).length;
+  /** Itens a enviar: sem os repetidos não liberados; linhas iguais dentro do mesmo documento são distintas. */
+  function itemsToSend(){
+    const seen=new Map<string,number>();
+    return rows.filter((r,i)=>!dups[i]||r.confirm_distinct).map(r=>{const k=`${r.date}|${r.kind}|${toCents(r.amount)}`;const n=seen.get(k)||0;seen.set(k,n+1);return {...r,amount:cleanMoney(r.amount),confirm_distinct:!!r.confirm_distinct||n>0};});
+  }
   async function confirm(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();setBusy(true);setError('');
     const form=new FormData(event.currentTarget);
@@ -81,14 +102,16 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
           cardId=created.id;setCardTarget(cardId);
         }
         if(!cardId)throw new Error('Escolha o cartão desta fatura.');
+        const items=itemsToSend();if(!items.length)throw new Error('Todas as compras já estão lançadas neste cartão. Nada novo para confirmar.');
         const target=data.accounts.find(a=>a.id===cardId);
         if(target&&earliest<target.opening_date)throw new Error(`Há compras de ${earliest}, antes do início do cartão (${target.opening_date}). Remova essas linhas ou use outro cartão.`);
         // Compras já aconteceram: entram como despesas (estornos como crédito) no cartão, na data da compra.
         await act('intake.confirm',{source_type:source?.type,source_hash:source?.hash,account_id:cardId,
-          items:rows.map(r=>({...r,amount:cleanMoney(r.amount),event_type:'paid',obligation_id:undefined,transaction_id:undefined,confirm_distinct:!!r.confirm_distinct}))},
-          'Compras lançadas no cartão. O total da fatura fica como saldo do cartão até o pagamento.');
+          items:items.map(r=>({...r,event_type:'paid',obligation_id:undefined,transaction_id:undefined}))},
+          `${items.length} compra(s) lançada(s) no cartão${rows.length>items.length?`; ${rows.length-items.length} repetida(s) ignorada(s)`:''}. O total da fatura fica como saldo do cartão até o pagamento.`);
       }
-      else await act('intake.confirm',{source_type:source?.type,source_hash:source?.hash,account_id:account||undefined,items:rows.map(r=>({...r,amount:cleanMoney(r.amount),confirm_distinct:!!r.confirm_distinct}))},'Dados confirmados. Fontes conciliadas sem guardar o original.');
+      else {const items=itemsToSend();if(!items.length)throw new Error('Todos os itens já estão lançados. Nada novo para confirmar.');
+        await act('intake.confirm',{source_type:source?.type,source_hash:source?.hash,account_id:account||undefined,items},`${items.length} registro(s) confirmado(s)${rows.length>items.length?`; ${rows.length-items.length} repetido(s) ignorado(s)`:''}.`);}
       clear();setProgress('Dados estruturados salvos. Arquivo e texto não foram armazenados.');
     }catch(e){setError((e as Error).message);}finally{setBusy(false);}
   }
@@ -109,13 +132,16 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
     </div>:<Hint short="Confira os campos antes de confirmar.">Extração por regras, sujeita a falhas. Campos não identificados ficam vazios. Não inclua ao mesmo tempo o total de uma fatura e cada compra. Hipóteses ficam como estimativas.</Hint>}
     {contract?<><ContractTerms values={contract}/><div className="form-grid">{fields.map(([key,label])=><label className="field" key={key}><span>{label}</span><input name={key} defaultValue={contract[key]||''} required={['title','counterparty','amount','start_date','months','due_day'].includes(key)} type={key.endsWith('_date')?'date':key==='months'||key==='due_day'?'number':'text'} min="1" max={key==='months'?60:key==='due_day'?31:undefined} maxLength={key.includes('note')?500:160}/></label>)}</div><label className="field"><span>Categoria</span><input name="category" list="category-list" defaultValue="Sem categoria" maxLength={80} required/></label><label className="checkbox-label"><input name="confirm_distinct" type="checkbox"/> Se houver contrato semelhante, confirmo que este é distinto.</label></>:<>
       {!invoice&&rows.some(r=>r.event_type==='paid')&&<label className="field"><span>Conta dos pagamentos realizados</span><select value={account} onChange={e=>setAccount(e.target.value)} required><option value="">Selecione</option>{data.accounts.map(a=><option key={a.id} value={a.id}>{accountLabel(a)}</option>)}</select></label>}
+      {dupCount>0&&<div className="dup-summary" role="status"><p><strong>{dupCount} {dupCount===1?'item já está lançado':'itens já estão lançados'}</strong> (mesma data, valor e conta). {dupForced===dupCount?(dupCount===1?'Será lançado de novo.':'Serão lançados de novo.'):dupForced?`${dupCount-dupForced} não serão lançados.`:(dupCount===1?'Não será lançado.':'Não serão lançados.')}</p>
+        <button type="button" className="text-button" onClick={()=>{const all=dupForced<dupCount;setRows(c=>c.map((r,i)=>dups[i]?{...r,confirm_distinct:all}:r));}}>{dupForced<dupCount?'Lançar todos mesmo assim':'Não lançar os repetidos'}</button></div>}
       {rows.map((r,i)=>{const matches=data.obligations.filter(o=>o.status!=='cancelled'&&o.kind===r.kind&&Number(o.amount)===Number(r.amount.replace(',','.')));
         const payments=data.transactions.filter(t=>t.status==='posted'&&t.kind===r.kind&&t.account_id===account&&Number(t.amount)===Number(r.amount.replace(',','.')));
-        return <fieldset className="intake-item" key={r.key}><legend>{invoice?`Compra ${i+1}`:`Registro ${i+1}`} · extraído, ainda não confirmado</legend><div className="form-grid"><label className="field"><span>Descrição</span><input required maxLength={160} value={r.description} onChange={e=>update(i,{description:e.target.value})}/></label><label className="field"><span>Valor (R$)</span><input required inputMode="decimal" value={r.amount} onChange={e=>update(i,{amount:e.target.value})}/></label><label className="field"><span>{invoice?'Data da compra':'Data do evento / vencimento'}</span><input required type="date" value={r.date} onChange={e=>update(i,{date:e.target.value})}/></label><label className="field"><span>Categoria {r.category!==UNCATEGORIZED&&<small className="suggested">sugerida</small>}</span><input required maxLength={80} list="category-list" autoComplete="off" value={r.category} onChange={e=>update(i,{category:e.target.value})}/></label><label className="field"><span>Tipo</span><select value={r.kind} onChange={e=>update(i,{kind:e.target.value as 'income'|'expense',obligation_id:undefined,transaction_id:undefined})}><option value="expense">{invoice?'Compra':'Despesa'}</option><option value="income">{invoice?'Estorno / crédito':'Receita'}</option></select></label>{!invoice&&<label className="field"><span>Situação</span><select value={r.event_type} onChange={e=>update(i,{event_type:e.target.value as ExtractedItem['event_type'],transaction_id:undefined})}><option value="predicted">Previsto</option><option value="charged">Cobrado</option><option value="paid">Pago / recebido</option><option value="estimated">Estimado</option></select></label>}</div>
+        return <fieldset className={`intake-item ${dups[i]&&!r.confirm_distinct?'is-duplicate':''}`} key={r.key}><legend>{invoice?`Compra ${i+1}`:`Registro ${i+1}`}{dups[i]&&<span className="badge orange">{r.confirm_distinct?'Repetido · será lançado':'Já lançado · não será lançado'}</span>}</legend>
+        {dups[i]&&<p className="dup-note">Igual a: {dups[i]} <label className="checkbox-label"><input type="checkbox" checked={!!r.confirm_distinct} onChange={e=>update(i,{confirm_distinct:e.target.checked})}/> Lançar mesmo assim</label></p>}<div className="form-grid"><label className="field"><span>Descrição</span><input required maxLength={160} value={r.description} onChange={e=>update(i,{description:e.target.value})}/></label><label className="field"><span>Valor (R$)</span><input required inputMode="decimal" value={r.amount} onChange={e=>update(i,{amount:e.target.value})}/></label><label className="field"><span>{invoice?'Data da compra':'Data do evento / vencimento'}</span><input required type="date" value={r.date} onChange={e=>update(i,{date:e.target.value})}/></label><CategorySelect label={r.category!==UNCATEGORIZED?"Categoria (sugerida)":"Categoria"} value={r.category} onChange={v=>update(i,{category:v})}/><label className="field"><span>Tipo</span><select value={r.kind} onChange={e=>update(i,{kind:e.target.value as 'income'|'expense',obligation_id:undefined,transaction_id:undefined})}><option value="expense">{invoice?'Compra':'Despesa'}</option><option value="income">{invoice?'Estorno / crédito':'Receita'}</option></select></label>{!invoice&&<label className="field"><span>Situação</span><select value={r.event_type} onChange={e=>update(i,{event_type:e.target.value as ExtractedItem['event_type'],transaction_id:undefined})}><option value="predicted">Previsto</option><option value="charged">Cobrado</option><option value="paid">Pago / recebido</option><option value="estimated">Estimado</option></select></label>}</div>
         {!invoice&&<label className="field"><span>Vincular ao mesmo compromisso</span><select value={r.obligation_id||''} onChange={e=>update(i,{obligation_id:e.target.value||undefined})}><option value="">Nenhum — criar registro distinto</option>{matches.map(o=><option key={o.id} value={o.id}>{o.description} · {o.due_date} · {brl(o.amount)} · {o.status==='paid'?'já pago':'em aberto'}</option>)}</select></label>}
         {!invoice&&r.event_type==='paid'&&<label className="field"><span>Pagamento já cadastrado / importado</span><select value={r.transaction_id||''} onChange={e=>update(i,{transaction_id:e.target.value||undefined})}><option value="">Registrar nova movimentação</option>{payments.map(t=><option key={t.id} value={t.id}>{t.description} · {t.date} · {brl(t.amount)}</option>)}</select></label>}
-        <label className="checkbox-label"><input type="checkbox" checked={!!r.confirm_distinct} onChange={e=>update(i,{confirm_distinct:e.target.checked})}/> Revisei os semelhantes e confirmo que este registro é distinto.</label><button className="text-button" type="button" onClick={()=>setRows(current=>current.filter((_,index)=>index!==i))}>Remover da seleção</button></fieldset>;})}
+        <button className="text-button" type="button" onClick={()=>setRows(current=>current.filter((_,index)=>index!==i))}>Remover da seleção</button></fieldset>;})}
     </>}
-    <button className="button primary" disabled={busy}>{busy?'Confirmando…':invoice?'Lançar compras no cartão':'Confirmar importação'}</button></form>}
+    <button className="button primary" disabled={busy}>{busy?'Confirmando…':invoice?`Lançar ${rows.length-dupCount+dupForced} compra(s) no cartão`:`Confirmar ${rows.length-dupCount+dupForced} registro(s)`}</button></form>}
     </div></section>;
 }

@@ -5,6 +5,7 @@ import type { FinanceState } from '@/lib/types';
 import { brl, decimal } from '@/lib/money';
 import { budgetStatus, goalProgress, lastMonths, monthlyByGroup, topMerchants } from '@/lib/planning';
 import { accountLabel } from './card-fields';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 const clean = (v: string) => (v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v);
@@ -47,7 +48,7 @@ export default function ReportsPage({ data, act }: { data: FinanceState; act: Ac
           </div>
         ))}
         <form onSubmit={addBudget} className="inline-form">
-          <input name="category" list="category-list" required maxLength={80} placeholder="Categoria (ex.: Alimentação / Delivery)" autoComplete="off" />
+          <CategorySelect name="category" hideLabel defaultValue="Alimentação" />
           <input name="amount" inputMode="decimal" required pattern="[0-9.,]+" placeholder="Limite R$" />
           <button className="button" disabled={busy}>Salvar</button>
         </form>

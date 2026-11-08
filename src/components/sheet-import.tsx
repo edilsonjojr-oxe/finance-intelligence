@@ -7,6 +7,7 @@ import { analyzeWorkbook, type MonthlyItem, type ScheduleBlock, type RecurringIt
 import { buildMemory, suggestCategory, UNCATEGORIZED } from '@/lib/categorize';
 import { accountLabel } from './card-fields';
 import Hint from './hint';
+import CategorySelect from './category-select';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
 type M = MonthlyItem & { selected: boolean; category: string };
@@ -119,7 +120,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
                           <span className="import-desc">{m.description}{m.note && <small>{m.note}</small>}</span>
                           <input className="import-amount" inputMode="decimal" aria-label="Valor" value={m.amount} placeholder="sem valor" onChange={(e) => { const v = e.target.value; const c = v.includes(',') ? v.replace(/\./g, '').replace(',', '.') : v; setM(m.key, { amount: c, selected: !!c }); }} />
                           <input type="date" aria-label="Vencimento" value={m.date} onChange={(e) => setM(m.key, { date: e.target.value, dateGuessed: false })} className={m.dateGuessed ? 'guessed' : ''} title={m.dateGuessed ? 'Data deduzida pelo nome da aba' : ''} />
-                          <input list="category-list" aria-label="Categoria" value={m.category} autoComplete="off" onChange={(e) => setM(m.key, { category: e.target.value })} />
+                          <CategorySelect hideLabel value={m.category} onChange={(v) => setM(m.key, { category: v })} />
                           <span className={`status-pill ${m.paid ? 'paid' : 'open'}`}>{m.paid ? 'Pago' : 'Pendente'}</span>
                         </div>
                       ))}
@@ -157,7 +158,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
                     <span className="import-desc">{x.description}{x.payment && <small>{x.payment}</small>}</span>
                     <span className="import-amount">{brl(x.amount)}</span>
                     <label className="day-input">dia <input type="number" min={1} max={31} value={x.due_day} onChange={(e) => setR(x.key, { due_day: e.target.value })} aria-label="Dia de vencimento" /></label>
-                    <input list="category-list" aria-label="Categoria" value={x.category} autoComplete="off" onChange={(e) => setR(x.key, { category: e.target.value })} />
+                    <CategorySelect hideLabel value={x.category} onChange={(v) => setR(x.key, { category: v })} />
                   </div>
                 ))}
               </details>

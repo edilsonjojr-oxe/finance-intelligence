@@ -60,6 +60,7 @@ import SheetImport from "./sheet-import";
 import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
 import { categoryList, DIVIDED } from "@/lib/categorize";
+import CategorySelect, { CategoryOptions } from "./category-select";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -172,21 +173,9 @@ function Amount({
     />
   );
 }
-/** Categoria com sugestões (prontas + suas + já usadas); aceita digitar uma nova. */
+/** Categoria em duas listas (grupo e subcategoria), com opção de incluir uma nova. */
 function Category() {
-  return (
-    <Field label="Categoria">
-      <input
-        name="category"
-        list="category-list"
-        defaultValue="Sem categoria"
-        required
-        maxLength={80}
-        autoComplete="off"
-        onFocus={(e) => e.currentTarget.value === "Sem categoria" && e.currentTarget.select()}
-      />
-    </Field>
-  );
+  return <CategorySelect name="category" defaultValue="Sem categoria" required />;
 }
 const slugify = (v: string) =>
   v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
@@ -950,12 +939,8 @@ export default function FinanceApp() {
   }
 
   return (
+    <CategoryOptions.Provider value={allCategories}>
     <div className="app-shell">
-      <datalist id="category-list">
-        {allCategories.map((c) => (
-          <option key={c} value={c} />
-        ))}
-      </datalist>
       {sidebar && (
         <button
           className="sidebar-scrim"
@@ -2574,5 +2559,6 @@ export default function FinanceApp() {
         </dialog>
       )}
     </div>
+    </CategoryOptions.Provider>
   );
 }
