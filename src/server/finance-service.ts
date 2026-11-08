@@ -321,6 +321,17 @@ export async function financeAction(
       await audit(db, user, action, v.id);
       return { id: v.id };
     }
+    if (action === "card.extend_start") {
+      // Fatura com compras anteriores ao início do cartão: antecipa a data de início.
+      // Só para cartão com saldo inicial zero (o saldo não muda; nada é apagado).
+      const v = z.object({ id, date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(payload);
+      const r = await db.query(
+        "UPDATE accounts SET opening_date=$1 WHERE id=$2 AND user_id=$3 AND type='credit_card' AND opening_balance=0 AND opening_date>$1 RETURNING id",
+        [v.date, v.id, user],
+      );
+      if (r.rows.length) await audit(db, user, action, v.id, { opening_date: v.date });
+      return { id: v.id };
+    }
     if (action === "movement.categorize") {
       // Troca a categoria de um lançamento confirmado (desfaz uma divisão, se houver).
       const v = z.object({ id, category }).parse(payload);

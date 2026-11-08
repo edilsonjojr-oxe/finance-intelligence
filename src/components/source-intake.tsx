@@ -5,6 +5,7 @@ import type { FinanceState } from '@/lib/types';
 import { brl,cents,decimal } from '@/lib/money';
 import { defaultCardName,extractCardMeta,extractContract,extractEntries,type CardMeta } from '@/lib/document-extraction';
 import { buildMemory,suggestCategory,UNCATEGORIZED } from '@/lib/categorize';
+import { parsePayslip,type Payslip } from '@/lib/payslip';
 import type { ExtractedItem } from '@/lib/intake';
 import { CardFields,accountLabel } from './card-fields';
 import Hint from './hint';
@@ -23,6 +24,7 @@ export function normalizeContractForm(form:FormData) {
   for(const [rate,period] of [['interest_rate','rate_period'],['cet','cet_period']]) {if(result[rate]&&!result[period])throw new Error('Informe o período de cada taxa preenchida.');if(!result[period])delete result[period];}
   result.confirm_distinct=form.get('confirm_distinct')==='on';return result;
 }
+const monthSpan=(dates:string[])=>{const f=(d:string)=>new Date(d+'T12:00:00Z').toLocaleDateString('pt-BR',{month:'short',year:'numeric',timeZone:'UTC'}).replace('. de ','/').replace('.','');const s=[...dates].sort();return s.length?(f(s[0])===f(s.at(-1)!)?`de ${f(s[0])}`:`de ${f(s[0])} a ${f(s.at(-1)!)}`):'';};
 const cleanMoney=(v:string)=>v.includes(',')?v.replace(/\./g,'').replace(',','.'):v;
 /** Cartão já cadastrado que corresponde à fatura: mesmo final e, se houver, mesmo banco. */
 function matchCard(meta:CardMeta,accounts:FinanceState['accounts']) {
@@ -36,12 +38,13 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
   const [source,setSource]=useState<{hash:string;type:'document'|'conversation'}|null>(null);
   const [busy,setBusy]=useState(false),[progress,setProgress]=useState(''),[error,setError]=useState(''),[account,setAccount]=useState('');
   const [card,setCard]=useState<CardMeta|null>(null),[cardTarget,setCardTarget]=useState('');
+  const [payslip,setPayslip]=useState<Payslip|null>(null);
   const controller=useRef<AbortController|null>(null);const formRef=useRef<HTMLFormElement>(null);
   const memory=useMemo(()=>buildMemory(data.transactions.filter(t=>t.kind!=='transfer')),[data.transactions]);
   useEffect(()=>()=>{controller.current?.abort();},[]);
   const invoice=card!==null;
   const cards=data.accounts.filter(a=>a.type==='credit_card');
-  function clear(){controller.current?.abort();setRows([]);setContract(null);setSource(null);setCard(null);setCardTarget('');setError('');formRef.current?.reset();}
+  function clear(){controller.current?.abort();setPayslip(null);setRows([]);setContract(null);setSource(null);setCard(null);setCardTarget('');setError('');formRef.current?.reset();}
   async function read(event:FormEvent<HTMLFormElement>) {
     event.preventDefault();const form=event.currentTarget;const fd=new FormData(form);
     const file=fd.get('document') as File;let text=String(fd.get('text')||'');
@@ -59,6 +62,9 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
         const extracted=extractEntries(text,mode as 'paid'|'charged'|'predicted').map(r=>({...r,category:r.category&&r.category!==UNCATEGORIZED?r.category:suggestCategory(r.description,r.kind,memory)}));
         // Itens vindos do leitor de fatura: identificar o cartão e lançar as compras nele.
         if(extracted.some(r=>r.key.startsWith('card-'))){const meta=extractCardMeta(text);setCard(meta);setCardTarget(matchCard(meta,data.accounts)||'new');}
+        // Contracheque: sugere a conta do banco informado no documento (pode trocar).
+        if(extracted.some(r=>r.key.startsWith('payslip-'))){const ps=parsePayslip(text);setPayslip(ps);const bank=(ps?.bank||'').toLowerCase();
+          const match=bank&&data.accounts.find(a=>a.type!=='credit_card'&&a.type!=='receivable'&&`${a.name} ${a.institution||''}`.toLowerCase().includes(bank));if(match)setAccount(match.id);}
         setRows(extracted);
       }
       setProgress('Leitura concluída. Revise os campos; o original não será guardado.');
@@ -104,11 +110,14 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
         if(!cardId)throw new Error('Escolha o cartão desta fatura.');
         const items=itemsToSend();if(!items.length)throw new Error('Todas as compras já estão lançadas neste cartão. Nada novo para confirmar.');
         const target=data.accounts.find(a=>a.id===cardId);
-        if(target&&earliest<target.opening_date)throw new Error(`Há compras de ${earliest}, antes do início do cartão (${target.opening_date}). Remova essas linhas ou use outro cartão.`);
+        if(target&&earliest<target.opening_date){
+          if(cents(target.opening_balance)!==0n)throw new Error(`Há compras de ${earliest}, antes do início do cartão (${target.opening_date}). Remova essas linhas ou use outro cartão.`);
+          await act('card.extend_start',{id:cardId,date:earliest},'Início do cartão ajustado.');
+        }
         // Compras já aconteceram: entram como despesas (estornos como crédito) no cartão, na data da compra.
         await act('intake.confirm',{source_type:source?.type,source_hash:source?.hash,account_id:cardId,
           items:items.map(r=>({...r,event_type:'paid',obligation_id:undefined,transaction_id:undefined}))},
-          `${items.length} compra(s) lançada(s) no cartão${rows.length>items.length?`; ${rows.length-items.length} repetida(s) ignorada(s)`:''}. O total da fatura fica como saldo do cartão até o pagamento.`);
+          `${items.length} compra(s) lançada(s) no cartão${rows.length>items.length?`; ${rows.length-items.length} repetida(s) ignorada(s)`:''}, com datas ${monthSpan(items.map(i=>i.date))}. Para ver, escolha esses meses em Movimentações. A dívida aparece em Contas e cartões até você registrar o pagamento.`);
       }
       else {const items=itemsToSend();if(!items.length)throw new Error('Todos os itens já estão lançados. Nada novo para confirmar.');
         await act('intake.confirm',{source_type:source?.type,source_hash:source?.hash,account_id:account||undefined,items},`${items.length} registro(s) confirmado(s)${rows.length>items.length?`; ${rows.length-items.length} repetido(s) ignorado(s)`:''}.`);}
@@ -129,6 +138,10 @@ export default function SourceIntake({data,act}:{data:FinanceState;act:Act}) {
       {cardTarget==='new'&&<><div className="form-grid"><label className="field"><span>Nome do cartão (pode alterar)</span><input name="card_name" required maxLength={120} defaultValue={defaultCardName(card)}/></label><label className="field"><span>Banco / emissor</span><input name="card_institution" maxLength={120} defaultValue={card.issuer}/></label></div>
         <CardFields values={{card_brand:card.brand,card_holder:card.holder,card_last4:card.last4,due_day:card.due_day?Number(card.due_day):null}}/></>}
       <Hint short={<>{rows.length} compras · soma {brl(decimal(invoiceTotal<0n?-invoiceTotal:invoiceTotal))}{card.total&&cents(card.total)!==invoiceTotal&&<strong> · diferente do total da fatura</strong>}</>}>As compras entram como despesas deste cartão, na data de cada compra, com a categoria sugerida (você pode trocar). O total da fatura não é lançado de novo; para quitá-la, registre o pagamento como transferência da sua conta para o cartão.</Hint>
+    </div>:payslip?<div className="invoice-card">
+      <h3>Contracheque {payslip.competence?`${payslip.competence.slice(5)}/${payslip.competence.slice(0,4)}`:''}{payslip.employer&&` · ${payslip.employer}`}</h3>
+      <p className="form-help">Proventos {brl(decimal(payslip.earnings))} − descontos {brl(decimal(payslip.deductions))} = <strong>líquido {brl(decimal(payslip.earnings-payslip.deductions))}</strong>{payslip.net!==null&&(payslip.consistent?' · confere com o documento':<strong> · diferente do líquido do documento ({brl(decimal(payslip.net))}); confira as linhas</strong>)}{payslip.paymentDate&&` · pagamento em ${payslip.paymentDate.split('-').reverse().join('/')}`}{payslip.bank&&` · banco ${payslip.bank}`}</p>
+      <Hint short="Na data do pagamento, a conta recebe só o líquido.">Proventos entram como receitas e descontos (impostos, empréstimos, refeição…) como despesas, todos na data do pagamento. O adiantamento descontado entra como receita na data em que você recebeu (sugerido dia 15; ajuste a data se for outro dia) e o salário já vem sem ele, para não contar duas vezes. Se o adiantamento já está lançado, o app avisa que é repetido.</Hint>
     </div>:<Hint short="Confira os campos antes de confirmar.">Extração por regras, sujeita a falhas. Campos não identificados ficam vazios. Não inclua ao mesmo tempo o total de uma fatura e cada compra. Hipóteses ficam como estimativas.</Hint>}
     {contract?<><ContractTerms values={contract}/><div className="form-grid">{fields.map(([key,label])=><label className="field" key={key}><span>{label}</span><input name={key} defaultValue={contract[key]||''} required={['title','counterparty','amount','start_date','months','due_day'].includes(key)} type={key.endsWith('_date')?'date':key==='months'||key==='due_day'?'number':'text'} min="1" max={key==='months'?60:key==='due_day'?31:undefined} maxLength={key.includes('note')?500:160}/></label>)}</div><label className="field"><span>Categoria</span><input name="category" list="category-list" defaultValue="Sem categoria" maxLength={80} required/></label><label className="checkbox-label"><input name="confirm_distinct" type="checkbox"/> Se houver contrato semelhante, confirmo que este é distinto.</label></>:<>
       {!invoice&&rows.some(r=>r.event_type==='paid')&&<label className="field"><span>Conta dos pagamentos realizados</span><select value={account} onChange={e=>setAccount(e.target.value)} required><option value="">Selecione</option>{data.accounts.map(a=><option key={a.id} value={a.id}>{accountLabel(a)}</option>)}</select></label>}

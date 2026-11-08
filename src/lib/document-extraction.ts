@@ -1,5 +1,6 @@
 import { financialDescription, type ExtractedItem } from './intake';
 import { validDate } from './money';
+import { parsePayslip, payslipItems } from './payslip';
 export function normalizedDate(value:string) {
   const s=value.trim();const d=/^\d{2}\/\d{2}\/\d{4}$/.test(s)?s.split('/').reverse().join('-'):s;
   return validDate(d)?d:'';
@@ -12,6 +13,9 @@ function lineValue(text:string,labels:string[]) {
   return text.split(/\r?\n/).find(line=>labels.some(label=>normalize(line).startsWith(label)))?.split(/[:=]/).slice(1).join(':').trim()||'';
 }
 export function extractEntries(text:string,event:'paid'|'charged'|'predicted'='charged'):ExtractedItem[] {
+  // Contracheque: proventos e descontos viram lançamentos realizados na data do pagamento.
+  const payslip=parsePayslip(text);
+  if(payslip) return payslipItems(payslip,new Date().toISOString().slice(0,10));
   // Fatura de cartão primeiro: a linha do vencimento tem data e valor e seria lida como um item.
   const invoice=extractCardInvoice(text,event);
   if(invoice.length) return invoice;
