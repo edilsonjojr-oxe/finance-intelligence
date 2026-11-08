@@ -3195,3 +3195,58 @@ nav button.active::before { background: var(--gold); }
 .commitment-row.is-overdue .date-tile span { color: var(--danger); }
 .commitment-side { display: grid; justify-items: end; gap: 2px; }
 .commitment-side .text-button { font-size: 12.5px; }
+/* Tela inicial: cartão "Saldo hoje" */
+.hero-balance { background: linear-gradient(160deg, #1f1c10 0%, var(--surface) 55%); border: 1px solid rgba(255, 215, 0, 0.35); border-radius: var(--radius-md); padding: 22px; margin-bottom: 18px; display: grid; gap: 14px; box-shadow: 0 0 15px var(--glow-gold); animation: fi-enter 0.42s var(--ease) both; }
+.hero-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.hero-top span { color: var(--muted); font-size: 15px; font-weight: 500; }
+.hero-top small { font-size: 12px; }
+.hero-balance > strong { font-size: clamp(2.2rem, 7vw, 3rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; color: var(--heading); font-variant-numeric: tabular-nums; }
+.hero-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hero-split button { text-align: left; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; display: grid; gap: 2px; color: var(--text); transition: border-color 0.2s; }
+.hero-split button:hover { border-color: var(--gold-soft); }
+.hero-split span { font-size: 13px; color: var(--muted); }
+.hero-split strong { font-size: 18px; font-weight: 700; color: var(--heading); font-variant-numeric: tabular-nums; }
+.hero-month { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); }
+.hero-month span { display: inline-flex; align-items: center; gap: 6px; }
+.hero-month strong { color: var(--heading); font-variant-numeric: tabular-nums; }
+
+/* Projeção do saldo em barras por mês */
+.month-bars { padding: 6px 20px 4px; }
+.month-bars-plot { position: relative; height: 170px; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; margin-top: 18px; }
+.month-bars-zero { position: absolute; left: 0; right: 0; border-top: 1px dashed var(--line-strong); }
+.month-bar-col { position: relative; }
+.month-bar { position: absolute; left: 0; right: 0; background: #3a3420; border-radius: 6px; transition: background-color 0.2s; }
+.month-bar.last { background: var(--gold); box-shadow: 0 0 12px var(--glow-gold); }
+.month-bar.neg { background: rgba(242, 139, 130, 0.55); }
+.month-bar-col:hover .month-bar:not(.last):not(.neg) { background: #57502f; }
+.month-bar-value { position: absolute; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.month-bars-labels { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; margin-top: 8px; }
+.month-bars-labels span { text-align: center; font-size: 12.5px; color: var(--muted); }
+
+/* Compromissos com ícone colorido */
+.commitment-icon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; }
+.commitment-icon.out { background: rgba(242, 139, 130, 0.12); color: var(--danger); }
+.commitment-icon.in { background: rgba(111, 207, 151, 0.12); color: var(--positive); }
+.commitment-icon.card { background: rgba(255, 215, 0, 0.1); color: var(--gold); }
+.commitment-row.is-overdue .commitment-icon { box-shadow: inset 0 0 0 1px rgba(242, 139, 130, 0.6); }
+@media (max-width: 760px) {
+  .hero-balance { padding: 18px; }
+  .month-bars { padding: 4px 14px 2px; }
+  .month-bars-plot { height: 140px; gap: 8px; }
+}
+/* Central de avisos (sino com contador) */
+.notif-wrap { position: relative; }
+.notif-badge { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--danger); color: #1a1a1a; font-style: normal; font-size: 11px; font-weight: 700; display: grid; place-items: center; line-height: 1; }
+.notif-scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); border: 0; z-index: 250; }
+.notif-panel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 260; width: min(420px, calc(100vw - 24px)); max-height: min(70dvh, 620px); overflow-y: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-md); padding: 14px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6); animation: fi-enter 0.25s var(--ease) both; }
+.notif-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.notif-head strong { font-size: 16px; color: var(--heading); }
+.notif-panel .alerts { margin: 0; }
+.notif-panel .alert { font-size: 13.5px; }
+.notif-panel .alert.danger { display: grid; grid-template-columns: auto 1fr; }
+.notif-panel .alert.danger .button { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 760px) {
+  .notif-panel { position: fixed; top: 60px; right: 12px; left: 12px; width: auto; }
+}
+.notif-panel { position: fixed; top: 62px; right: 16px; }
+@media (max-width: 760px) { .notif-panel { top: 60px; right: 12px; left: 12px; } }

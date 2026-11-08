@@ -4,7 +4,14 @@
     {
       "name": "dev-sintetico",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["node_modules/next/dist/bin/next", "dev", "--hostname", "127.0.0.1", "--port", "3002"],
+      "runtimeArgs": [
+        "node_modules/next/dist/bin/next",
+        "dev",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3002"
+      ],
       "env": {
         "DATABASE_URL": "",
         "FINANCE_DATA_DIR": ".data/ui-sintetico",
@@ -17,8 +24,32 @@
     {
       "name": "dev-supabase",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["scripts/dev-supabase.mjs"],
+      "runtimeArgs": [
+        "scripts/dev-supabase.mjs"
+      ],
       "port": 3003
+    },
+    {
+      "name": "prod-sintetico",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--max-old-space-size=1024",
+        "--liftoff-only",
+        "node_modules/next/dist/bin/next",
+        "start",
+        "--hostname",
+        "127.0.0.1",
+        "--port",
+        "3004"
+      ],
+      "env": {
+        "DATABASE_URL": "",
+        "FINANCE_DATA_DIR": ".data/ui-sintetico",
+        "APP_ORIGIN": "",
+        "SETUP_TOKEN": "",
+        "CLOUD_DEPLOYMENT": ""
+      },
+      "port": 3004
     }
   ]
 }
