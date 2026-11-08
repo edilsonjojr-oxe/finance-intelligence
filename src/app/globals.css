@@ -3176,3 +3176,6 @@ nav button.active::before { background: var(--gold); }
   .advisor-thread { padding: 14px; }
   .advisor-msg { max-width: 94%; }
 }
+/* Camadas: menu lateral acima do fundo escurecido, da barra inferior e do topo (corrige toque no celular). */
+.sidebar { z-index: 210; }
+.sidebar-scrim { z-index: 200; }
