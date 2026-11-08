@@ -970,6 +970,8 @@ nav button.active:before {
 }
 .table-scroll {
   overflow-x: auto;
+  /* Ancora elementos absolutos (ex.: .sr-only do cabeçalho); sem isso a página rola para o lado no celular. */
+  position: relative;
 }
 table {
   width: 100%;
