@@ -24,10 +24,10 @@ Legenda: [x] feito · [ ] pendente · [-] fora do escopo por decisão do usuári
 - [x] 2.3 Revisão mobile: rolagem lateral corrigida (.sr-only do cabeçalho sem âncora); todas as páginas em 375px
 
 ## 3. Cartões completos (Fase D)
-- [ ] 3.1 Fechamento: compras após o fechamento vão para a próxima fatura; fatura atual × próxima
-- [ ] 3.2 "PARC 03/10" gera as parcelas futuras como previstas
-- [ ] 3.3 Limite disponível e alerta
-- [ ] 3.4 Conferência total lido × lançamentos
+- [x] 3.1 Fechamento: compras após o fechamento vão para a próxima fatura; fatura atual × próxima
+- [x] 3.2 "PARC 03/10" gera as parcelas futuras como previstas
+- [x] 3.3 Limite disponível e alerta
+- [x] 3.4 Conferência total lido × lançamentos (na leitura da fatura)
 
 ## 4. Nota de mercado (Fase C)
 - [ ] 4.1 Ler cupom (foto/PDF/texto) em itens

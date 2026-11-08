@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
 import { categoryBreakdown, forecast, isCard, nextDueDate, totals } from "@/lib/finance";
+import { cardStatus } from "@/lib/card-cycle";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
 import CandidateEditor from "./candidate-editor";
@@ -744,6 +745,8 @@ export default function FinanceApp() {
     data.obligations,
     data.today,
     days,
+    false,
+    data.transactions,
   );
   const ending = projection.at(-1)!.balance;
   const openObligations = data.obligations.filter((o) => o.status === "open" && o.stage !== 'estimated');
@@ -1444,6 +1447,7 @@ export default function FinanceApp() {
                   {data.accounts.map((a) => {
                     const card = isCard(a);
                     const debt = cents(a.balance) < 0n ? decimal(-cents(a.balance)) : "0.00";
+                    const st = card ? cardStatus(a, data.transactions, data.today) : null;
                     return (
                     <section key={a.id} className={`panel account-card ${card ? "credit-card" : ""}`}>
                       <div className="account-card-top">
@@ -1470,12 +1474,24 @@ export default function FinanceApp() {
                       <div className="account-reference">
                         {card ? (
                           <>
-                            {a.credit_limit ? `Limite: ${brl(a.credit_limit)}` : "Limite não informado"}
-                            <span>
-                              {a.due_day
-                                ? `Vence em ${dateLabel(nextDueDate(data.today, a.due_day))}`
-                                : "Informe o dia de vencimento"}
-                            </span>
+                            {st && a.closing_day && a.due_day ? (
+                              <>
+                                {`Fechada: ${brl(decimal(st.closed))} · vence ${dateLabel(st.closedDue!)}`}
+                                <span>{`Aberta: ${brl(decimal(st.open))} · fecha ${dateLabel(st.openCloses!)}`}</span>
+                              </>
+                            ) : (
+                              <>
+                                {a.due_day ? `Vence em ${dateLabel(nextDueDate(data.today, a.due_day))}` : "Informe vencimento e fechamento em Editar"}
+                              </>
+                            )}
+                            {st && st.future > 0n && <span>{`Parcelas futuras: ${brl(decimal(st.future))}`}</span>}
+                            {st && st.available !== null ? (
+                              <span className={st.usage !== null && st.usage >= 90 ? "limit-alert" : ""}>
+                                {`Disponível: ${brl(decimal(st.available))} de ${brl(a.credit_limit!)}${st.usage !== null ? ` (${Math.round(st.usage)}% usado)` : ""}`}
+                              </span>
+                            ) : (
+                              <span>Limite não informado</span>
+                            )}
                           </>
                         ) : (
                           <>

@@ -2567,3 +2567,8 @@ dd {
   margin-top: 4px;
   line-height: 1.5;
 }
+
+.account-reference .limit-alert {
+  color: var(--red);
+  font-weight: 700;
+}

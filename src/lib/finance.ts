@@ -1,4 +1,5 @@
 import { addDays, cents, decimal } from "./money";
+import { cardStatus, closings, dueAfter, futureInstallments } from "./card-cycle";
 import type { Account, Movement, Obligation, ForecastPoint, Split } from "./types";
 export function balanceFor(
   account: Pick<Account, "id" | "opening_balance" | "opening_date">,
@@ -92,15 +93,29 @@ export function forecast(
   today: string,
   days = 30,
   includeEstimates = false,
+  transactions: Movement[] = [],
 ): ForecastPoint[] {
   // Dinheiro disponível = contas que não são cartão. A dívida de cada cartão entra como
-  // saída no próximo vencimento (pagamento da fatura), em vez de reduzir o saldo hoje.
+  // saída no vencimento da fatura (pagamento), em vez de reduzir o saldo hoje.
   let balance = accounts
     .filter((a) => !isCard(a))
     .reduce((sum, a) => sum + cents(a.balance), 0n);
-  const cardBills = accounts
-    .filter((a) => isCard(a) && cents(a.balance) < 0n)
-    .map((a) => ({ date: a.due_day ? nextDueDate(today, a.due_day) : today, amount: -cents(a.balance) }));
+  const cardBills: { date: string; amount: bigint }[] = [];
+  for (const a of accounts.filter(isCard)) {
+    const st = cardStatus(a, transactions, today);
+    if (a.closing_day && a.due_day) {
+      // Fatura fechada no seu vencimento; a aberta no vencimento seguinte.
+      if (st.closed > 0n) cardBills.push({ date: st.closedDue! < today ? today : st.closedDue!, amount: st.closed });
+      if (st.open > 0n) cardBills.push({ date: st.openDue!, amount: st.open });
+    } else if (st.debt > 0n) cardBills.push({ date: a.due_day ? nextDueDate(today, a.due_day) : today, amount: st.debt });
+    // Parcelas futuras ("PARC 04/10"…) entram na fatura do mês em que caem.
+    for (const f of futureInstallments(transactions, new Set([a.id]))) {
+      const date = a.closing_day && a.due_day
+        ? dueAfter(f.date <= closings(f.date, a.closing_day).last ? closings(f.date, a.closing_day).last : closings(f.date, a.closing_day).next, a.due_day)
+        : a.due_day ? nextDueDate(f.date, a.due_day) : f.date;
+      cardBills.push({ date, amount: cents(f.amount) });
+    }
+  }
   const result: ForecastPoint[] = [];
   for (let day = 0; day < days; day++) {
     const date = addDays(today, day);
