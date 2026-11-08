@@ -75,5 +75,14 @@ completo; membro sem conta (só nome) incluído, vinculável depois.
 
 ## 9. Testes e qualidade (contínuo)
 - [ ] 9.1 http-run com as novas funcionalidades
-- [ ] 9.2 Fluxos principais na tela (desktop e celular)
+- [x] 9.2 Fluxos principais na tela (desktop e celular) — revisão de interface 2026-11-08
 - [ ] 9.3 Restauração de backup com tabelas novas
+
+## 10. Revisão de interface (2026-11-08)
+- [x] Menu agrupado (principal / Planejamento / Pessoas) e barra inferior no celular com "Mais"
+- [x] Endereço por tela (#/movimentacoes etc.); botão voltar funciona
+- [x] Um único "Exportar" (Movimentações: período + filtros); Relatórios sem exportação duplicada
+- [x] Importar em abas (documento, planilha, extrato, nota); revisão de extrato preservada
+- [x] Textos curtos; painéis decorativos e roadmap desatualizado removidos
+- [x] Paleta quente, fontes maiores, tabela de movimentações em lista no celular
+- [x] Duplo clique não repete lançamento (requisição idêntica em andamento é reaproveitada)

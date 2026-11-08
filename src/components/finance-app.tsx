@@ -20,8 +20,6 @@ import {
   CalendarDays,
   Check,
   CheckCircle2,
-  ChevronRight,
-  CircleHelp,
   FileCheck2,
   FileText,
   Landmark,
@@ -32,7 +30,6 @@ import {
   Search,
   Settings2,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   Upload,
   Wallet,
@@ -45,6 +42,7 @@ import {
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
 import { categoryBreakdown, forecast, isCard, isLiquid, nextDueDate, totals } from "@/lib/finance";
+import { transactionsCsv } from "@/lib/planning";
 import { cardStatus } from "@/lib/card-cycle";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
@@ -87,66 +85,38 @@ type Modal =
   | "categorize"
   | null;
 const navigation = [
-  { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-  { id: "transactions", label: "Lançamentos", icon: ArrowRightLeft },
-  { id: "accounts", label: "Minhas contas", icon: Wallet },
-  { id: "obligations", label: "Compromissos", icon: CalendarDays },
-  { id: "contracts", label: "Contratos", icon: FileText },
-  { id: "loans", label: "Empréstimos", icon: HandCoins },
-  { id: "shared", label: "Dividir", icon: Users },
-  { id: "reports", label: "Relatórios", icon: BarChart3 },
-  { id: "imports", label: "Importações", icon: Upload },
-  { id: "forecast", label: "Projeção de caixa", icon: TrendingUp },
+  { id: "overview", label: "Visão geral", short: "Início", icon: LayoutDashboard, group: "" },
+  { id: "transactions", label: "Movimentações", short: "Movimentos", icon: ArrowRightLeft, group: "" },
+  { id: "accounts", label: "Contas e cartões", short: "Contas", icon: Wallet, group: "" },
+  { id: "imports", label: "Importar", short: "Importar", icon: Upload, group: "" },
+  { id: "obligations", label: "Compromissos", short: "Agenda", icon: CalendarDays, group: "Planejamento" },
+  { id: "forecast", label: "Projeção de caixa", short: "Projeção", icon: TrendingUp, group: "Planejamento" },
+  { id: "reports", label: "Orçamentos e metas", short: "Metas", icon: BarChart3, group: "Planejamento" },
+  { id: "contracts", label: "Contratos", short: "Contratos", icon: FileText, group: "Planejamento" },
+  { id: "loans", label: "Empréstimos e dívidas", short: "Dívidas", icon: HandCoins, group: "Planejamento" },
+  { id: "shared", label: "Dividir despesas", short: "Dividir", icon: Users, group: "Pessoas" },
 ] as const;
+/** Destinos da barra inferior no celular; o restante fica em "Mais". */
+const bottomNav: Page[] = ["overview", "transactions", "accounts", "imports"];
+const pageSlug: Record<Page, string> = {
+  overview: "visao-geral", transactions: "movimentacoes", accounts: "contas", obligations: "compromissos",
+  contracts: "contratos", loans: "emprestimos", reports: "orcamentos", shared: "dividir",
+  imports: "importar", forecast: "projecao", settings: "configuracoes",
+};
+const pageFromHash = (hash: string): Page | null =>
+  (Object.keys(pageSlug) as Page[]).find((k) => `#/${pageSlug[k]}` === hash) || null;
 const pageText: Record<Page, { title: string; subtitle: string }> = {
-  overview: {
-    title: "Sua vida financeira, em perspectiva.",
-    subtitle: "Entenda o presente. Prepare o próximo passo.",
-  },
-  transactions: {
-    title: "Cada movimento, no seu lugar.",
-    subtitle: "Entradas, saídas e transferências com histórico rastreável.",
-  },
-  accounts: {
-    title: "Um lugar para todas as suas contas.",
-    subtitle:
-      "Saldos calculados a partir de uma referência informada por você.",
-  },
-  obligations: {
-    title: "O futuro já tem alguns compromissos.",
-    subtitle: "Organize vencimentos e acompanhe o que ainda está em aberto.",
-  },
-  contracts: {
-    title: "Mais clareza sobre o que foi combinado.",
-    subtitle: "Transforme condições contratuais em compromissos futuros.",
-  },
-  loans: {
-    title: "Quem deve a quem, sem esquecer nada.",
-    subtitle:
-      "Empréstimos com pessoas ou bancos e acordos de dívida, parcela por parcela.",
-  },
-  shared: {
-    title: "Despesas divididas, contas em dia.",
-    subtitle: "Divida com quem mora ou viaja com você; cada um vê só a própria parte nas finanças.",
-  },
-  reports: {
-    title: "Para onde vai o dinheiro.",
-    subtitle: "Orçamentos, metas e comparações mês a mês.",
-  },
-  imports: {
-    title: "Menos digitação. Mais controle.",
-    subtitle:
-      "Importe movimentos, revise os registros e confirme o que entra na sua base.",
-  },
-  forecast: {
-    title: "Olhe à frente com mais clareza.",
-    subtitle:
-      "Uma projeção verificável, baseada nos saldos e compromissos cadastrados.",
-  },
-  settings: {
-    title: "Sua central, com transparência.",
-    subtitle: "Acompanhe a base, a auditoria e as próximas etapas do produto.",
-  },
+  overview: { title: "Visão geral", subtitle: "" },
+  transactions: { title: "Movimentações", subtitle: "Entradas, saídas e transferências." },
+  accounts: { title: "Contas e cartões", subtitle: "Saldos a partir do valor inicial que você informou." },
+  obligations: { title: "Compromissos", subtitle: "Contas a pagar e a receber." },
+  contracts: { title: "Contratos", subtitle: "Condições recorrentes que geram compromissos." },
+  loans: { title: "Empréstimos e dívidas", subtitle: "Com pessoas ou bancos, parcela por parcela." },
+  shared: { title: "Dividir despesas", subtitle: "Cada pessoa vê só a própria parte nas finanças." },
+  reports: { title: "Orçamentos e metas", subtitle: "Limites por categoria, metas e comparação mensal." },
+  imports: { title: "Importar", subtitle: "Tudo passa por revisão antes de entrar no saldo." },
+  forecast: { title: "Projeção de caixa", subtitle: "Com base em saldos e compromissos cadastrados." },
+  settings: { title: "Configurações", subtitle: "" },
 };
 const dateLabel = (date: string) =>
   new Date(`${date}T12:00:00Z`).toLocaleDateString("pt-BR", {
@@ -167,7 +137,7 @@ async function request<T>(url: string, body?: unknown): Promise<T> {
         }
       : { cache: "no-store" },
   ).catch(() => {
-    throw new Error("Não foi possível conectar ao Finance Intelligence. Verifique se o servidor está ligado e acesse http://127.0.0.1:3000 neste computador. Antes de repetir um cadastro, atualize a página e confira se ele foi salvo.");
+    throw new Error("Sem conexão com o servidor. Verifique a internet e tente de novo. Antes de repetir um cadastro, atualize a página e confira se ele já foi salvo.");
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Não foi possível concluir.");
@@ -216,6 +186,41 @@ function Category() {
         onFocus={(e) => e.currentTarget.value === "Sem categoria" && e.currentTarget.select()}
       />
     </Field>
+  );
+}
+const slugify = (v: string) =>
+  v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+function downloadText(text: string, filename: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+const lastDay = (m: string) => {
+  const [y, mo] = m.split("-").map(Number);
+  return `${m}-${String(new Date(Date.UTC(y, mo, 0)).getUTCDate()).padStart(2, "0")}`;
+};
+/** Único ponto de exportação de movimentações: período (padrão = mês filtrado) + filtros da tela. */
+function ExportMenu({ month, note, onExport }: { month: string; note: string; onExport: (from: string, to: string) => void }) {
+  const [from, setFrom] = useState(`${month}-01`), [to, setTo] = useState(lastDay(month));
+  useEffect(() => { setFrom(`${month}-01`); setTo(lastDay(month)); }, [month]);
+  return (
+    <details className="export-menu">
+      <summary className="button"><ArrowDownToLine size={16} /> Exportar</summary>
+      <div className="export-pop">
+        <strong>Exportar movimentações (CSV)</strong>
+        <div className="export-dates">
+          <label className="field"><span>De</span><input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
+          <label className="field"><span>Até</span><input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></label>
+        </div>
+        <small>{note ? `Filtros aplicados: ${note}. ` : ""}Compras divididas saem uma linha por categoria. Abre no Excel.</small>
+        <button type="button" className="button primary" disabled={!from || !to || from > to} onClick={() => onExport(from, to)}>
+          <ArrowDownToLine size={16} /> Baixar CSV
+        </button>
+      </div>
+    </details>
   );
 }
 function Empty({
@@ -394,52 +399,31 @@ function Login({
           </span>
         </div>
         <div className="login-copy">
-          <span className="eyebrow light">CLAREZA PARA DECIDIR MELHOR</span>
           <h1>
-            Seu dinheiro.
+            Suas finanças,
             <br />
-            Uma visão
-            <br />
-            <em>mais completa.</em>
+            <em>em um só lugar.</em>
           </h1>
-          <p>
-            Conecte seus movimentos de hoje aos planos de amanhã. Tudo começa
-            com uma base confiável.
-          </p>
-          <div className="login-points">
-            <span>
-              <CheckCircle2 size={17} /> Contas e compromissos organizados
-            </span>
-            <span>
-              <CheckCircle2 size={17} /> Projeções com memória de cálculo
-            </span>
-            <span>
-              <CheckCircle2 size={17} /> Cada registro com sua origem
-            </span>
-          </div>
+          <p>Saldos, compromissos e projeções com base no que você registra.</p>
         </div>
-        <span className="login-foot">
-          CENTRAL DE INTELIGÊNCIA FINANCEIRA PESSOAL
-        </span>
       </section>
       <section className="login-form">
         <div className="login-form-inner">
-          <span className="eyebrow">SEU ESPAÇO FINANCEIRO</span>
           <h2>
             {needsSetup
-              ? "Vamos começar."
+              ? "Criar acesso"
               : registering
-                ? "Crie seu acesso."
-                : "Bom ter você de volta."}
+                ? "Criar acesso"
+                : "Entrar"}
           </h2>
           <p>
             {needsSetup
-              ? "Crie seu acesso pessoal para organizar sua vida financeira."
+              ? "Crie o seu acesso pessoal."
               : registering
                 ? splitSignup
                   ? "Crie um acesso só para dividir despesas. Você pode virar conta completa depois, por convite."
                   : "Use o convite que você recebeu. Seus dados ficam separados dos de quem convidou."
-                : "Entre para acompanhar suas contas e próximos compromissos."}
+                : "Use seu e-mail e senha."}
           </p>
           {invite && (
             <p className="login-invite">
@@ -533,8 +517,8 @@ function Login({
               {busy
                 ? "Preparando seu espaço…"
                 : creating
-                  ? "Criar meu acesso"
-                  : "Entrar na minha central"}
+                  ? "Criar acesso"
+                  : "Entrar"}
               <ArrowRight size={17} />
             </button>
           </form>
@@ -574,6 +558,7 @@ export default function FinanceApp() {
     [accountType, setAccountType] = useState("checking"),
     [transferTo, setTransferTo] = useState(""),
     [busy, setBusy] = useState(false);
+  const [importTab, setImportTab] = useState<"document" | "sheet" | "statement" | "receipt">("document");
   const [days, setDays] = useState(30),
     [simulation, setSimulation] = useState(""),
     [batchId, setBatchId] = useState(""),
@@ -592,6 +577,7 @@ export default function FinanceApp() {
   }, [load]);
   useEffect(() => {
     if (modal) dialog.current?.showModal();
+    else setError(""); // erro do formulário não deve sobrar após fechá-lo
   }, [modal]);
   useEffect(() => {
     if (!notice) return;
@@ -614,7 +600,15 @@ export default function FinanceApp() {
     setPage(id);
     setSidebar(false);
     setError("");
+    if (window.location.hash !== `#/${pageSlug[id]}`) window.history.pushState(null, "", `#/${pageSlug[id]}`);
+    window.scrollTo(0, 0);
   };
+  useEffect(() => {
+    const sync = () => { const p = pageFromHash(window.location.hash); if (p) setPage(p); };
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   function open(type: Modal, id = "") {
     setTarget(id);
     setKind("expense");
@@ -630,10 +624,20 @@ export default function FinanceApp() {
     setKind("transfer");
     setTransferTo(cardId);
   }
-  async function act(
+  // Envio idêntico ainda em andamento (duplo clique/toque) reaproveita a mesma requisição.
+  const inFlight = useRef(new Map<string, Promise<{ id: string; count?: number; skipped?: number }>>());
+  function act(action: string, payload: unknown, message = "Alteração salva.") {
+    const key = JSON.stringify([action, payload]);
+    const pending = inFlight.current.get(key);
+    if (pending) return pending;
+    const run = actOnce(action, payload, message).finally(() => inFlight.current.delete(key));
+    inFlight.current.set(key, run);
+    return run;
+  }
+  async function actOnce(
     action: string,
     payload: unknown,
-    message = "Alteração salva.",
+    message: string,
   ) {
     setBusy(true);
     setError("");
@@ -761,7 +765,7 @@ export default function FinanceApp() {
         )}
       </div>
     );
-  if (!auth.user) return <Login needsSetup={auth.needsSetup} requiresSetupToken={auth.requiresSetupToken} onDone={async () => { await load(); setGroupInvite(readGroupInvite()); }} groupInvite={groupInvite} />;
+  if (!auth.user) return <Login needsSetup={auth.needsSetup} requiresSetupToken={auth.requiresSetupToken} onDone={async () => { setError(""); await load(); setGroupInvite(readGroupInvite()); }} groupInvite={groupInvite} />;
   const splitOnly = auth.user.plan === "split_only";
   if (!data)
     return (
@@ -800,6 +804,9 @@ export default function FinanceApp() {
   const ending = projection.at(-1)!.balance;
   const openObligations = data.obligations.filter((o) => o.status === "open" && o.stage !== 'estimated');
   const overdue = openObligations.filter((o) => o.due_date < data.today);
+  const pendingReview = data.batches.some((b) => b.status === "review");
+  // Conta "só divisão" fica sempre em Dividir, mesmo se o endereço (#/...) apontar outra tela.
+  if (splitOnly && page !== "shared") setPage("shared");
   const risk = projection.find((p) => cents(p.balance) < 0n);
   const filtered = data.transactions.filter(
     (t) =>
@@ -807,7 +814,7 @@ export default function FinanceApp() {
       (!accountFilter ||
         t.account_id === accountFilter ||
         t.destination_account_id === accountFilter) &&
-      `${t.description} ${t.category}`.toLowerCase().includes(search),
+      `${t.description} ${t.category}`.toLowerCase().includes(search.trim().toLowerCase()),
   );
   const allSplits = data.splits;
   const accountName = (id: string) =>
@@ -817,13 +824,17 @@ export default function FinanceApp() {
       {accountLabel(a)}
     </option>
   ));
-  const exportURL = `/api/export?month=${encodeURIComponent(month)}&account=${encodeURIComponent(accountFilter)}&search=${encodeURIComponent(search)}`;
+  const filteredForExport = data.transactions.filter(
+    (t) =>
+      (!accountFilter || t.account_id === accountFilter || t.destination_account_id === accountFilter) &&
+      `${t.description} ${t.category}`.toLowerCase().includes(search.trim().toLowerCase()),
+  );
   // Por grupo (Alimentação, Casa…) com subcategorias; lançamentos divididos entram pelas partes.
   const categories = categoryBreakdown(data.transactions, data.splits, month);
   const expenses = cents(sum.expense);
   const modalTitle = {
     account: "Adicionar conta",
-    movement: "Novo lançamento",
+    movement: "Nova movimentação",
     obligation: "Novo compromisso",
     contract: "Novo contrato recorrente",
     settle: "Liquidar compromisso",
@@ -845,7 +856,7 @@ export default function FinanceApp() {
       />
     ) : (
       <div className="table-scroll">
-        <table>
+        <table className="movement-table">
           <thead>
             <tr>
               <th>Descrição / categoria</th>
@@ -952,7 +963,7 @@ export default function FinanceApp() {
           onClick={() => setSidebar(false)}
         />
       )}
-      <aside className={`sidebar ${sidebar ? "shown" : ""}`}>
+      <aside id="menu-lateral" className={`sidebar ${sidebar ? "shown" : ""}`}>
         <a
           href="#"
           className="brand"
@@ -968,42 +979,28 @@ export default function FinanceApp() {
             finance<span className="brand-sub">INTELLIGENCE</span>
           </span>
         </a>
-        <div className="workspace">
-          <span className="workspace-avatar">P</span>
-          <div>
-            Meu espaço pessoal<small>Finanças em perspectiva</small>
-          </div>
-          <ShieldCheck size={15} />
-        </div>
-        <span className="nav-heading">SUA CENTRAL</span>
         <nav aria-label="Navegação principal">
-          {navigation.filter((n) => !splitOnly || n.id === "shared").map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              className={page === id ? "active" : ""}
-              onClick={() => navigate(id)}
-              aria-current={page === id ? "page" : undefined}
-            >
-              <Icon size={19} />
-              {label}
-              {id === "imports" &&
-                data.batches.some((b) => b.status === "review") && (
-                  <i className="nav-dot" />
-                )}
-            </button>
+          {navigation.filter((n) => !splitOnly || n.id === "shared").map(({ id, label, icon: Icon, group }, i, list) => (
+            <div key={id} className="nav-item">
+              {!splitOnly && group && list[i - 1]?.group !== group && <span className="nav-heading">{group}</span>}
+              <button
+                className={page === id ? "active" : ""}
+                onClick={() => navigate(id)}
+                aria-current={page === id ? "page" : undefined}
+              >
+                <Icon size={19} />
+                {label}
+                {id === "imports" && pendingReview && <><i className="nav-dot" /><span className="sr-only">(importação aguardando revisão)</span></>}
+              </button>
+            </div>
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <Sparkles size={18} />
-            <strong>Clareza antes da decisão.</strong>
-            <p>Uma base organizada é o primeiro passo para planejar melhor.</p>
-          </div>
           {!splitOnly && <button
             className={`settings-link ${page === "settings" ? "active" : ""}`}
             onClick={() => navigate("settings")}
           >
-            <Settings2 size={18} /> Configurações e histórico
+            <Settings2 size={18} /> Configurações
           </button>}
           <div className="profile">
             <span className="avatar">
@@ -1034,55 +1031,40 @@ export default function FinanceApp() {
         <header className="topbar">
           <div className="breadcrumb">
             <button
-              className="mobile-menu icon-button"
+              className={`mobile-menu icon-button ${splitOnly ? "" : "has-bottom-nav"}`}
               aria-label="Abrir menu"
               onClick={() => setSidebar(true)}
             >
               <Menu size={22} />
             </button>
-            <span>Meu espaço</span>
-            <ChevronRight size={13} />
-            <strong>
-              {page === "settings"
-                ? "Configurações"
-                : navigation.find((n) => n.id === page)?.label}
-            </strong>
+            <strong className="topbar-brand">Finance Intelligence</strong>
           </div>
           <div className="topbar-right">
-            <span className="private-status">
-              <span /> Espaço privado
-            </span>
             {!splitOnly && <button
               className="icon-button"
-              aria-label="Ver compromissos pendentes"
+              aria-label={overdue.length ? `${overdue.length} compromisso(s) em atraso` : "Ver compromissos"}
               onClick={() => navigate("obligations")}
             >
               <Bell size={19} />
               {overdue.length > 0 && <i className="notification-dot" />}
             </button>}
-            <span className="avatar small">
-              {auth.user.name.slice(0, 1).toUpperCase()}
-            </span>
+
           </div>
         </header>
         <div className="page-content">
           {groupInvite && <JoinGroupCard token={groupInvite} act={act} onDone={() => { setGroupInvite(""); navigate("shared"); }} />}
           <div className="page-heading">
             <div>
-              <span className="eyebrow">
-                {page === "overview"
-                  ? `OLÁ, ${auth.user.name.split(" ")[0].toUpperCase()}`
-                  : "FINANCE INTELLIGENCE"}
-              </span>
+              {page === "overview" && <span className="eyebrow">Olá, {auth.user.name.split(" ")[0]}</span>}
               <h1>{pageText[page].title}</h1>
-              <p>{pageText[page].subtitle}</p>
+              {pageText[page].subtitle && <p>{pageText[page].subtitle}</p>}
             </div>
             {["overview", "transactions"].includes(page) && (
               <button
                 className="button primary"
                 onClick={() => open("movement")}
               >
-                <Plus size={17} /> Novo lançamento
+                <Plus size={17} /> Nova movimentação
               </button>
             )}
             {page === "accounts" && (
@@ -1131,12 +1113,6 @@ export default function FinanceApp() {
           {page === "overview" && (
             <>
               <div className="section-toolbar">
-                <div className="segmented">
-                  <span className="selected">Visão de caixa</span>
-                  <span className="hint">
-                    <ShieldCheck size={14} /> Dados registrados
-                  </span>
-                </div>
                 <label className="month-picker">
                   <CalendarDays size={16} />
                   <input
@@ -1153,31 +1129,41 @@ export default function FinanceApp() {
                     <Landmark size={24} />
                   </div>
                   <div>
-                    <strong>
-                      Seu primeiro passo: uma conta e um saldo de referência.
-                    </strong>
-                    <p>
-                      A partir daí, cada movimento ajuda a construir uma visão
-                      real das suas finanças.
-                    </p>
+                    <strong>Comece cadastrando uma conta</strong>
+                    <p>Informe o saldo atual para os cálculos começarem.</p>
                   </div>
                   <button className="button" onClick={() => open("account")}>
                     Adicionar conta <ArrowRight size={16} />
                   </button>
                 </div>
               )}
+              {(risk || overdue.length > 0) && (
+                <div className="alerts">
+                  {risk && (
+                    <button className="alert warning" onClick={() => navigate("forecast")}>
+                      <Bell size={17} />
+                      <span><strong>Saldo previsto negativo</strong> {brl(risk.balance)} em {dateLabel(risk.date)}. Revise os compromissos do período.</span>
+                      <ArrowRight size={15} />
+                    </button>
+                  )}
+                  {overdue.length > 0 && (
+                    <button className="alert warning" onClick={() => navigate("obligations")}>
+                      <CalendarDays size={17} />
+                      <span><strong>{overdue.length} compromisso(s) em atraso</strong> Entram no primeiro dia da projeção.</span>
+                      <ArrowRight size={15} />
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="metrics">
                 <div className="metric featured">
                   <div className="metric-label">
-                    Saldo disponível nas contas <Wallet size={18} />
+                    Saldo em contas <Wallet size={18} />
                   </div>
                   <strong>{brl(balance)}</strong>
                   <span>
                     {bankAccounts.length}{" "}
-                    {bankAccounts.length === 1
-                      ? "conta cadastrada"
-                      : "contas cadastradas"}{" "}
-                    · hoje
+                    {bankAccounts.length === 1 ? "conta" : "contas"} · hoje
                     {cards.length > 0 &&
                       ` · faturas em aberto: ${brl(cardDebt)}`}
                   </span>
@@ -1185,38 +1171,37 @@ export default function FinanceApp() {
                 </div>
                 <div className="metric">
                   <div className="metric-label">
-                    Receitas recebidas{" "}
+                    Receitas do mês{" "}
                     <span className="metric-icon green">
                       <ArrowDownLeft size={17} />
                     </span>
                   </div>
                   <strong>{brl(sum.income)}</strong>
                   <span>
-                    <i className="dot green" /> Realizado no mês selecionado
+                    <i className="dot green" /> Realizado
                   </span>
                 </div>
                 <div className="metric">
                   <div className="metric-label">
-                    Despesas pagas{" "}
+                    Despesas do mês{" "}
                     <span className="metric-icon orange">
                       <ArrowUpRight size={17} />
                     </span>
                   </div>
                   <strong>{brl(sum.expense)}</strong>
                   <span>
-                    <i className="dot orange" /> Realizado no mês selecionado
+                    <i className="dot orange" /> Realizado
                   </span>
                 </div>
                 <div className="metric">
                   <div className="metric-label">
-                    Saldo em {days} dias <TrendingUp size={18} />
+                    Previsto em {days} dias <TrendingUp size={18} />
                   </div>
                   <strong className={cents(ending) < 0n ? "negative" : ""}>
                     {brl(ending)}
                   </strong>
                   <span>
-                    <i className="dot neutral" /> Projeção · compromissos
-                    conhecidos
+                    <i className="dot neutral" /> Previsto · só compromissos cadastrados
                   </span>
                 </div>
               </div>
@@ -1224,8 +1209,8 @@ export default function FinanceApp() {
                 <section className="panel forecast-panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>O caminho do seu saldo</h2>
-                      <p>Projeção a partir de hoje</p>
+                      <h2>Saldo previsto</h2>
+                      <p>A partir de hoje · <button className="text-button" onClick={() => navigate("forecast")}>Ver detalhes</button></p>
                     </div>
                     <select
                       aria-label="Horizonte da projeção"
@@ -1251,73 +1236,15 @@ export default function FinanceApp() {
                   ) : (
                     <Empty
                       icon={TrendingUp}
-                      title="Seu futuro financeiro começa com dados"
-                      description="Cadastre uma conta e seus próximos recebimentos e pagamentos."
+                      title="Sem dados para projetar"
+                      description="Cadastre uma conta e seus próximos pagamentos e recebimentos."
                     />
                   )}
-                </section>
-                <section className="panel insights-panel">
-                  <div className="panel-heading">
-                    <h2>
-                      <Sparkles size={18} /> Leitura financeira
-                    </h2>
-                    <Badge>Regras</Badge>
-                  </div>
-                  <div className="insights">
-                    <div className={`insight ${risk ? "warning" : ""}`}>
-                      <span className="insight-symbol">
-                        {risk ? <Bell size={19} /> : <ShieldCheck size={19} />}
-                      </span>
-                      <div>
-                        <strong>
-                          {risk
-                            ? "Atenção ao caixa projetado"
-                            : !data.accounts.length
-                              ? "Vamos construir sua base"
-                              : "Acompanhe a cobertura dos dados"}
-                        </strong>
-                        <p>
-                          {risk
-                            ? `O saldo pode ficar em ${brl(risk.balance)} em ${dateLabel(risk.date)}. Revise os compromissos deste período.`
-                            : !data.accounts.length
-                              ? "Adicione seus saldos e compromissos. A análise aparece conforme você registra informações."
-                              : "A projeção considera apenas compromissos cadastrados. Despesas ainda não registradas podem alterar o resultado."}
-                        </p>
-                      </div>
-                    </div>
-                    {overdue.length > 0 && (
-                      <div className="insight warning">
-                        <span className="insight-symbol">
-                          <CalendarDays size={19} />
-                        </span>
-                        <div>
-                          <strong>
-                            {overdue.length} compromisso(s) em atraso
-                          </strong>
-                          <p>
-                            Os valores em aberto foram incluídos no primeiro dia
-                            da projeção.
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                    <button
-                      className="text-button"
-                      onClick={() => navigate("forecast")}
-                    >
-                      Explorar projeção <ArrowRight size={15} />
-                    </button>
-                  </div>
-                  <div className="insight-footer">
-                    <CircleHelp size={14} /> Cálculos determinísticos, com dados
-                    da sua base.
-                  </div>
                 </section>
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
                       <h2>Próximos compromissos</h2>
-                      <p>O que merece sua atenção</p>
                     </div>
                     <button
                       className="text-button"
@@ -1375,12 +1302,10 @@ export default function FinanceApp() {
                 <section className="panel">
                   <div className="panel-heading">
                     <div>
-                      <h2>Para onde foi seu dinheiro</h2>
-                      <p>Despesas por grupo · toque para ver as subcategorias</p>
+                      <h2>Despesas por categoria</h2>
+                      <p>Toque para ver as subcategorias</p>
                     </div>
-                    <span className="subtle-icon">
-                      <ArrowUpRight size={18} />
-                    </span>
+
                   </div>
                   {categories.length ? (
                     <div className="categories">
@@ -1422,8 +1347,8 @@ export default function FinanceApp() {
                   ) : (
                     <Empty
                       icon={FileCheck2}
-                      title="Tudo pronto para acompanhar"
-                      description="Suas despesas realizadas aparecerão aqui, agrupadas por categoria."
+                      title="Nenhuma despesa no mês"
+                      description="As despesas realizadas aparecem aqui por categoria."
                     />
                   )}
                 </section>
@@ -1431,14 +1356,13 @@ export default function FinanceApp() {
               <section className="panel transactions-panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>Últimos movimentos</h2>
-                    <p>Registros do mês selecionado</p>
+                    <h2>Últimas movimentações</h2>
                   </div>
                   <button
                     className="text-button"
                     onClick={() => navigate("transactions")}
                   >
-                    Ver lançamentos <ArrowRight size={14} />
+                    Ver todas <ArrowRight size={14} />
                   </button>
                 </div>
                 <MovementTable
@@ -1475,14 +1399,21 @@ export default function FinanceApp() {
                   <option value="">Todas as contas</option>
                   {options}
                 </select>
-                <a className="button" href={exportURL}>
-                  <ArrowDownToLine size={16} /> Exportar CSV
-                </a>
+                <ExportMenu
+                  month={month}
+                  onExport={(from, to) =>
+                    downloadText(
+                      transactionsCsv(filteredForExport, data.splits, data.accounts, from, to),
+                      `movimentacoes-${from}-a-${to}${accountFilter ? "-" + slugify(accountName(accountFilter)) : ""}.csv`,
+                    )
+                  }
+                  note={[accountFilter && `conta ${accountName(accountFilter)}`, search && `busca “${search}”`].filter(Boolean).join(" · ")}
+                />
               </div>
               <MovementTable rows={filtered} />
               <div className="table-footer">
-                {filtered.length} registro(s) · transferências não compõem
-                receitas e despesas.
+                {filtered.length} registro(s) · transferências não contam como
+                receita nem despesa.
               </div>
             </section>
           )}
@@ -1757,94 +1688,66 @@ export default function FinanceApp() {
           )}
           {page === "imports" && (
             <>
-              <SourceIntake data={data} act={act}/>
-              <ReceiptImport data={data} act={act}/>
-              <SheetImport data={data} act={act}/>
-              <div className="import-grid">
-                <section className="panel import-panel">
-                  <div className="panel-heading">
-                    <div>
-                      <h2>Importar extrato</h2>
-                      <p>CSV padronizado ou OFX bancário · até 2 MB</p>
-                    </div>
-                    <Upload size={20} />
-                  </div>
-                  <form onSubmit={importFile} className="padded-form">
-                    <Field label="Conta de destino">
-                      <select name="account_id" required>
-                        <option value="">Selecione a conta</option>
-                        {options}
-                      </select>
-                    </Field>
-                    <label className="upload-zone">
-                      <Upload size={28} />
-                      <strong>Selecione seu arquivo</strong>
-                      <span>
-                        Seus dados serão revisados antes de entrar na base.
-                      </span>
-                      <input
-                        name="file"
-                        type="file"
-                        accept=".csv,.ofx"
-                        required
-                        aria-label="Arquivo CSV ou OFX"
-                      />
-                    </label>
-                    <button
-                      className="button primary full"
-                      disabled={busy || !data.accounts.length}
-                    >
-                      {busy ? "Processando…" : "Ler arquivo e revisar"}
-                      <ArrowRight size={16} />
-                    </button>
-                    {!data.accounts.length && (
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => open("account")}
-                      >
-                        Cadastre uma conta primeiro
-                      </button>
-                    )}
-                  </form>
-                </section>
-                <section className="panel import-guide">
-                  <span className="eyebrow">ANTES DE IMPORTAR</span>
-                  <h2>
-                    Uma fonte. Uma revisão.
-                    <br />
-                    Uma base confiável.
-                  </h2>
-                  <ol>
-                    <li>
-                      Para CSV, use <code>data;descricao;valor;categoria</code>.
-                    </li>
-                    <li>
-                      Data no formato DD/MM/AAAA ou AAAA-MM-DD. Saídas com valor
-                      negativo.
-                    </li>
-                    <li>
-                      Exclua da seleção transferências próprias e pagamentos de
-                      fatura; o suporte específico a cartões será implementado
-                      em etapa posterior.
-                    </li>
-                    <li>
-                      Possíveis duplicidades exigem revisão. O mesmo arquivo ou
-                      identificador OFX não gera novo lançamento.
-                    </li>
-                  </ol>
-                  <p>
-                    O documento original não é armazenado. Candidatos CSV/OFX não confirmados expiram após 24 horas; a limpeza ocorre no próximo acesso. Gmail permanece planejado.
-                  </p>
-                </section>
+              <div className="import-tabs" role="tablist" aria-label="Tipo de importação">
+                {([
+                  ["document", "PDF, print ou texto"],
+                  ["sheet", "Planilha Excel"],
+                  ["statement", "Extrato CSV/OFX"],
+                  ["receipt", "Nota de mercado"],
+                ] as const).map(([id, label]) => (
+                  <button key={id} role="tab" id={`tab-${id}`} aria-controls={`painel-${id}`} aria-selected={importTab === id} className={importTab === id ? "active" : ""} onClick={() => setImportTab(id)}>
+                    {label}
+                    {id === "statement" && pendingReview && <><i className="nav-dot" /><span className="sr-only">(aguardando revisão)</span></>}
+                  </button>
+                ))}
               </div>
+              <div role="tabpanel" id="painel-document" aria-labelledby="tab-document" hidden={importTab !== "document"}><SourceIntake data={data} act={act}/></div>
+              <div role="tabpanel" id="painel-sheet" aria-labelledby="tab-sheet" hidden={importTab !== "sheet"}><SheetImport data={data} act={act}/></div>
+              <div role="tabpanel" id="painel-receipt" aria-labelledby="tab-receipt" hidden={importTab !== "receipt"}><ReceiptImport data={data} act={act}/></div>
+              <section className="panel import-panel" role="tabpanel" id="painel-statement" aria-labelledby="tab-statement" hidden={importTab !== "statement"}>
+                <div className="panel-heading">
+                  <div>
+                    <h2>Extrato do banco</h2>
+                    <p>CSV ou OFX · até 2 MB</p>
+                  </div>
+                </div>
+                <form onSubmit={importFile} className="padded-form">
+                  <Field label="Conta do extrato">
+                    <select name="account_id" required>
+                      <option value="">Selecione a conta</option>
+                      {options}
+                    </select>
+                  </Field>
+                  <label className="field">
+                    <span>Arquivo</span>
+                    <input name="file" type="file" accept=".csv,.ofx" required aria-label="Arquivo CSV ou OFX" />
+                  </label>
+                  <button className="button primary" disabled={busy || !data.accounts.length}>
+                    {busy ? "Lendo…" : "Ler extrato"}
+                  </button>
+                  {!data.accounts.length && (
+                    <button type="button" className="text-button" onClick={() => open("account")}>
+                      Cadastre uma conta primeiro
+                    </button>
+                  )}
+                  <details className="help-details">
+                    <summary>Formato do CSV e regras</summary>
+                    <ul>
+                      <li>Colunas: <code>data;descricao;valor;categoria</code>.</li>
+                      <li>Data em DD/MM/AAAA ou AAAA-MM-DD. Saídas com valor negativo.</li>
+                      <li>Desmarque transferências entre suas contas e pagamentos de fatura para não contar duas vezes.</li>
+                      <li>O mesmo arquivo ou identificador OFX não gera lançamento repetido. Possíveis duplicidades pedem revisão.</li>
+                    </ul>
+                  </details>
+                  <p className="form-help">O arquivo não é guardado. Itens não confirmados expiram em 24 horas.</p>
+                </form>
+              </section>
+              {(importTab === "statement" || pendingReview) && (
               <section className="panel review-panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>Área de revisão</h2>
-                    <p>
-                      Nenhum candidato afeta seu saldo antes da confirmação.
-                    </p>
+                    <h2>Revisão do extrato</h2>
+                    <p>Nada entra no saldo antes de você confirmar.</p>
                   </div>
                   <select
                     aria-label="Lote de importação"
@@ -1991,6 +1894,7 @@ export default function FinanceApp() {
                   />
                 )}
               </section>
+              )}
               {data.batches.some((b) => b.status === "committed") && (
                 <p className="page-footnote">
                   {data.batches.filter((b) => b.status === "committed").length}{" "}
@@ -2127,14 +2031,9 @@ export default function FinanceApp() {
           {page === "settings" && (
             <>
               <div className="settings-grid">
-                <InstallPanel/>
-                <SessionPanel/>
-                <BackupPanel/>
-                <InvitePanel/>
-                <CategoryPanel custom={data.categories} act={act}/>
                 <section className="panel settings-card">
                   <ShieldCheck size={26} />
-                  <h2>Sobre esta instalação</h2>
+                  <h2>Sua conta</h2>
                   <dl>
                     <div>
                       <dt>Perfil</dt>
@@ -2157,36 +2056,20 @@ export default function FinanceApp() {
                       <dd>BRL · America/Sao_Paulo</dd>
                     </div>
                   </dl>
-                  <p>
-                    Os dados estruturados persistem no servidor desta instalação. PDFs, imagens e textos lidos não são mantidos. O navegador
-                    guarda somente a sessão de acesso.
-                  </p>
+                  <p>PDFs, imagens e textos lidos não são guardados. O navegador guarda só a sessão de acesso.</p>
                 </section>
-                <section className="panel settings-card">
-                  <Activity size={26} />
-                  <h2>Recursos disponíveis e evolução</h2>
-                  <p>
-                    Contas, caixa, compromissos, contratos recorrentes, leitura temporária de documentos,
-                    conciliação, projeções, backup criptografado e auditoria estão disponíveis.
-                  </p>
-                  <p>
-                    Próximas etapas: cartões e faturas consolidadas, simulação de renegociação de dívidas,
-                    orçamentos, metas, MFA e consultor IA conectado a provedor.
-                  </p>
-                  <p>
-                    Gmail e outros conectores exigirão integração própria e
-                    autorização. Nenhuma caixa de e-mail é lida nesta versão.
-                  </p>
-                </section>
+                <BackupPanel/>
+                <CategoryPanel custom={data.categories} act={act}/>
+                <InvitePanel/>
+                <SessionPanel/>
+                <InstallPanel/>
+
               </div>
               <section className="panel">
                 <div className="panel-heading">
                   <div>
                     <h2>Histórico de operações</h2>
-                    <p>
-                      Últimos 50 eventos. Nenhuma operação de apagar histórico é
-                      exposta.
-                    </p>
+                    <p>Últimos 50 eventos. O histórico não pode ser apagado.</p>
                   </div>
                   <ShieldCheck size={18} />
                 </div>
@@ -2241,19 +2124,32 @@ export default function FinanceApp() {
               </section>
             </>
           )}
-          <footer className="page-footer">
-            <span>
-              <Activity size={14} /> Finance Intelligence
-            </span>
-            <span>Organizar. Compreender. Planejar.</span>
-          </footer>
+
         </div>
       </main>
+      {!splitOnly && (
+        <nav className="bottom-nav" aria-label="Navegação rápida">
+          {bottomNav.map((id) => {
+            const item = navigation.find((n) => n.id === id)!;
+            const Icon = item.icon;
+            return (
+              <button key={id} className={page === id ? "active" : ""} aria-current={page === id ? "page" : undefined} onClick={() => navigate(id)}>
+                <Icon size={20} />
+                <span>{item.short}</span>
+                {id === "imports" && pendingReview && <><i className="nav-dot" /><span className="sr-only">(importação aguardando revisão)</span></>}
+              </button>
+            );
+          })}
+          <button className={!bottomNav.includes(page) ? "active" : ""} aria-expanded={sidebar} aria-controls="menu-lateral" onClick={() => setSidebar(true)}>
+            <Menu size={20} />
+            <span>{bottomNav.includes(page) ? "Mais" : navigation.find((n) => n.id === page)?.short || "Mais"}</span>
+          </button>
+        </nav>
+      )}
       {modal && (
         <dialog className="modal" ref={dialog} onCancel={() => setModal(null)}>
           <div className="modal-heading">
             <div>
-              <span className="eyebrow">SUA BASE FINANCEIRA</span>
               <h2>{modalTitle[modal]}</h2>
             </div>
             <button

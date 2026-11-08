@@ -79,7 +79,7 @@ export default function SheetImport({ data, act }: { data: FinanceState; act: Ac
 
   return (
     <section className="panel sheet-import">
-      <div className="panel-heading"><div><h2><FileSpreadsheet size={18} /> Importar planilha (Excel)</h2><p>Contas do mês, empréstimos, acordos e gastos fixos · .xlsx até 8 MB</p></div></div>
+      <div className="panel-heading"><div><h2><FileSpreadsheet size={18} /> Planilha Excel</h2><p>Contas do mês, empréstimos, acordos e gastos fixos · .xlsx até 8 MB</p></div></div>
       <div className="padded-form">
         <Hint short="Lida no seu aparelho. Só entra o que você marcar.">A planilha não é enviada nem guardada. Reimportar a mesma planilha não duplica nada.</Hint>
         <label className="field"><span>Planilha .xlsx</span><input type="file" accept=".xlsx" disabled={busy} onChange={(e) => e.target.files?.[0] && read(e.target.files[0])} /></label>

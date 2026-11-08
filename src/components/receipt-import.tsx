@@ -62,7 +62,7 @@ export default function ReceiptImport({ data, act }: { data: FinanceState; act: 
   const set = (i: number, c: Partial<ReceiptItem>) => setItems((cur) => cur.map((x, k) => (k === i ? { ...x, ...c } : x)));
   return (
     <section className="panel receipt-import">
-      <div className="panel-heading"><div><h2><ReceiptText size={18} /> Nota de mercado</h2><p>Separe a compra por categoria: comida, limpeza, casa…</p></div></div>
+      <div className="panel-heading"><div><h2><ReceiptText size={18} /> Nota de mercado</h2><p>Divide uma compra em categorias: comida, limpeza, casa…</p></div></div>
       <div className="padded-form">
         <Hint short="Lida no seu aparelho. A imagem não é guardada.">Foto ou PDF do cupom (NFC-e), ou o texto colado. Os itens recebem categoria pelo produto e o app aprende com as suas correções. O desconto é repartido entre os itens e a soma fecha com o valor pago.</Hint>
         {!items.length ? (

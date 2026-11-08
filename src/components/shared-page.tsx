@@ -254,7 +254,7 @@ function GroupCard({ group, data, act }: { group: SharedGroup; data: FinanceStat
       {form ? <ExpenseForm group={group} data={data} act={act} edit={form === 'new' ? undefined : form} onDone={() => setForm(null)} />
         : <div className="row-actions">
             <button className="button primary" disabled={!active} onClick={() => setForm('new')}><Plus size={15} /> Nova despesa</button>
-            <button className="button" onClick={() => downloadCSV(group)}><Download size={15} /> CSV</button>
+            <button className="button" onClick={() => downloadCSV(group)}><Download size={15} /> Exportar grupo (CSV)</button>
           </div>}
       <details>
         <summary>Despesas ({group.expenses.length})</summary>

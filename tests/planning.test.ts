@@ -47,7 +47,7 @@ describe('Orçamentos, metas e relatórios', () => {
     const csv = transactionsCsv(txs.map((t) => (t.id === '5' ? { ...t, amount: '10.00' } : t)), splits, [{ id: 'c', name: 'Conta' } as Account], '2026-11-01', '2026-11-30');
     const lines = csv.replace('﻿', '').split('\r\n');
     expect(lines).toHaveLength(6);
-    expect(lines[1]).toBe('2026-11-02;ZAFFARI;expense;240,00;Alimentação / Mercado;parte;Conta;;posted');
+    expect(lines[1]).toBe('2026-11-02;ZAFFARI;Despesa;240,00;Alimentação / Mercado;parte;Conta;;Realizado');
     expect(lines[2]).toContain('travesseiro');
     expect(lines.at(-1)!.startsWith("2026-11-05;\"'=HYPERLINK(\"\"x\"\")\"")).toBe(true);
   });

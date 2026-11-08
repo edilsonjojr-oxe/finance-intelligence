@@ -66,6 +66,8 @@ export function topMerchants(transactions: Movement[], month: string, limit = 8)
 }
 
 /** CSV (separador ;) dos lançamentos do período, com as partes das compras divididas. */
+const KIND_LABEL: Record<string, string> = { income: 'Receita', expense: 'Despesa', transfer: 'Transferência' };
+const STATUS_LABEL: Record<string, string> = { posted: 'Realizado', reversed: 'Estornado' };
 export function transactionsCsv(transactions: Movement[], splits: Split[], accounts: Account[], from: string, to: string) {
   const safe = (v: string) => { const s = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v; return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const name = (id: string | null) => accounts.find((a) => a.id === id)?.name || '';
@@ -73,8 +75,8 @@ export function transactionsCsv(transactions: Movement[], splits: Split[], accou
   for (const t of [...transactions].sort((a, b) => a.date.localeCompare(b.date))) {
     if (t.date < from || t.date > to) continue;
     const parts = splits.filter((s) => s.transaction_id === t.id);
-    const base = [t.date, t.description, t.kind, t.amount.replace('.', ',')];
-    const tail = [name(t.account_id), name(t.destination_account_id), t.status];
+    const base = [t.date, t.description, KIND_LABEL[t.kind] || t.kind, t.amount.replace('.', ',')];
+    const tail = [name(t.account_id), name(t.destination_account_id), STATUS_LABEL[t.status] || t.status];
     if (parts.length) for (const p of parts) rows.push([...base.slice(0, 3), p.amount.replace('.', ','), p.category, p.description || 'parte', ...tail]);
     else rows.push([...base, t.category, '', ...tail]);
   }

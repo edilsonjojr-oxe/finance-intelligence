@@ -1,9 +1,9 @@
 'use client';
 import { useMemo, useState, type FormEvent } from 'react';
-import { Download, Target, Trash2 } from 'lucide-react';
+import { Target, Trash2 } from 'lucide-react';
 import type { FinanceState } from '@/lib/types';
 import { brl, decimal } from '@/lib/money';
-import { budgetStatus, goalProgress, lastMonths, monthlyByGroup, topMerchants, transactionsCsv } from '@/lib/planning';
+import { budgetStatus, goalProgress, lastMonths, monthlyByGroup, topMerchants } from '@/lib/planning';
 import { accountLabel } from './card-fields';
 
 type Act = (action: string, payload: unknown, message?: string) => Promise<unknown>;
@@ -17,7 +17,6 @@ export default function ReportsPage({ data, act }: { data: FinanceState; act: Ac
   const months = lastMonths(month, 6);
   const table = useMemo(() => monthlyByGroup(data.transactions, data.splits, months), [data, month]); // eslint-disable-line react-hooks/exhaustive-deps
   const merchants = useMemo(() => topMerchants(data.transactions, month), [data.transactions, month]);
-  const [from, setFrom] = useState(`${data.today.slice(0, 7)}-01`), [to, setTo] = useState(data.today);
 
   async function run(action: string, payload: unknown, message: string, form?: HTMLFormElement) {
     setBusy(true);
@@ -30,11 +29,6 @@ export default function ReportsPage({ data, act }: { data: FinanceState; act: Ac
   function addGoal(e: FormEvent<HTMLFormElement>) {
     e.preventDefault(); const f = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
     run('goal.create', { ...f, target: clean(f.target), saved: clean(f.saved || '0') }, 'Meta criada.', e.currentTarget);
-  }
-  function exportCsv() {
-    const blob = new Blob([transactionsCsv(data.transactions, data.splits, data.accounts, from, to)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a');
-    a.href = url; a.download = `lancamentos-${from}-a-${to}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   return (
@@ -117,15 +111,6 @@ export default function ReportsPage({ data, act }: { data: FinanceState; act: Ac
         ) : <p className="form-help">Sem despesas neste mês.</p>}
       </section>
 
-      <section className="panel padded-form">
-        <h2>Exportar lançamentos</h2>
-        <div className="inline-form wrap">
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="De" />
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="Até" />
-          <button type="button" className="button" onClick={exportCsv}><Download size={15} /> Baixar CSV (Excel)</button>
-        </div>
-        <p className="form-help">Compras divididas saem uma linha por categoria.</p>
-      </section>
     </div>
   );
 }
