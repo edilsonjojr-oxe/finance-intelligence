@@ -58,9 +58,7 @@ próprio usuário (caixa "Para lançar" ou automático por grupo). RLS por membr
 - [x] 7.7 Edição/exclusão lógica com ajustes e auditoria
 - [x] 7.8 Testes: conexão, RLS de terceiro, modos, arredondamento, soma ≠ total, materialização, acerto, edição/exclusão
 
-> Bloco 7 implementado e testado localmente (commit local). PUBLICAÇÃO PENDENTE: a migração
-> db/009_shared_expenses.sql foi bloqueada pela ferramenta em produção e precisa da autorização do
-> usuário. Não enviar o código antes de aplicar a 009 (o app recusa iniciar com migração pendente).
+> Bloco 7 publicado em 2026-11-08 (migração 009 aplicada no Supabase, deploy ok).
 
 ## 8. Grupos de divisão (Etapa 2)
 Decisões padrão: upgrade de "só divisão" para completa apenas por convite normal de usuário
