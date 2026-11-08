@@ -3,9 +3,9 @@ import { promisify } from 'node:util';
 import { transaction,type DB } from './db';
 import { AppError } from './auth';
 const scrypt=promisify(derive);
-export const backupTables=['users','accounts','transactions','contracts','obligations','import_batches','source_events','audit_events','categories','transaction_splits'] as const;
+export const backupTables=['users','accounts','transactions','contracts','obligations','import_batches','source_events','audit_events','categories','transaction_splits','budgets','goals'] as const;
 // Tabelas acrescentadas depois da v2: backups antigos sem elas continuam restauráveis.
-const optionalBackupTables=new Set<string>(['categories','transaction_splits']);
+const optionalBackupTables=new Set<string>(['categories','transaction_splits','budgets','goals']);
 export type Snapshot={version:2;created_at:string;tables:Record<string,Record<string,unknown>[]>};
 export async function collectSnapshot(db:DB,user:string):Promise<Snapshot> {
   const tables:Snapshot['tables']={};

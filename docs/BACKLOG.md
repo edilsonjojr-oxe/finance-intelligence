@@ -36,13 +36,13 @@ Legenda: [x] feito · [ ] pendente · [-] fora do escopo por decisão do usuári
 - [-] 4.4 Chave/QR NFC-e SEFAZ-RS — adiado: precisa de uma nota real para validar a consulta
 
 ## 5. Orçamentos e metas (Fase E)
-- [ ] 5.1 Limite mensal por grupo/subcategoria com alerta
-- [ ] 5.2 Metas de economia/reserva
+- [x] 5.1 Limite mensal por grupo/subcategoria com alerta
+- [x] 5.2 Metas de economia/reserva
 
 ## 6. Relatórios (Fase F)
-- [ ] 6.1 Mês a mês por categoria, evolução
-- [ ] 6.2 Maiores estabelecimentos
-- [ ] 6.3 Exportar CSV/Excel com partes divididas
+- [x] 6.1 Mês a mês por categoria, evolução
+- [x] 6.2 Maiores estabelecimentos
+- [x] 6.3 Exportar CSV/Excel com partes divididas
 
 ## 7. Despesas compartilhadas (Etapa 1)
 Modelo contábil adotado: pagador vê saída de caixa total, despesa só da própria parte e o resto

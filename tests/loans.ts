@@ -77,9 +77,24 @@ async function main() {
   assert.equal((await getFinance(user)).accounts[0].balance, "644.22");
   pass("Reimportar a mesma planilha não duplica nada");
 
+  await financeAction(user, "budget.set", { category: "Alimentação/Delivery", amount: "400.00" });
+  await financeAction(user, "budget.set", { category: "Alimentação / Delivery", amount: "350.00" });
+  let plan = await getFinance(user);
+  assert.deepEqual(plan.budgets, [{ category: "Alimentação / Delivery", amount: "350.00" }]);
+  await financeAction(user, "budget.delete", { category: "Alimentação / Delivery" });
+  const goal = await financeAction(user, "goal.create", { name: "Reserva", target: "6000.00", saved: "500.00", deadline: "2027-06-01", account_id: "" });
+  await financeAction(user, "goal.update", { id: goal.id, name: "Reserva", target: "6000.00", saved: "750.00", deadline: "", account_id: conta.id });
+  plan = await getFinance(user);
+  assert.equal(plan.budgets.length, 0);
+  assert.deepEqual(plan.goals.map((g) => [g.saved, g.deadline, g.account_id]), [["750.00", null, conta.id]]);
+  await assert.rejects(() => financeAction(user, "goal.create", { name: "X", target: "10.00", account_id: randomUUID() }), /Conta não encontrada/);
+  await financeAction(user, "goal.delete", { id: goal.id });
+  assert.equal((await getFinance(user)).goals.length, 0);
+  pass("Orçamento (categoria normalizada, atualiza sem duplicar) e metas (criar, vincular conta, remover)");
+
   const db = await database();
   if (db.mode === "local") await db.client.close();
-  console.log("6 cenários de empréstimos e planilha aprovados; somente dados sintéticos.");
+  console.log("7 cenários de empréstimos, planilha, orçamentos e metas aprovados; somente dados sintéticos.");
 }
 main().catch((error) => {
   console.error(error);

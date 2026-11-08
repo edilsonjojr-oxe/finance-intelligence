@@ -2605,3 +2605,80 @@ dd {
     grid-column: 1 / 3;
   }
 }
+
+/* Relatórios, orçamentos e metas */
+.reports {
+  display: grid;
+  gap: 16px;
+}
+.reports .month-pick {
+  max-width: 200px;
+}
+.reports h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.budget-row {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.budget-row small {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+.budget-row .bar-track span {
+  background: var(--green);
+}
+.budget-row.warn .bar-track span {
+  background: var(--orange);
+}
+.budget-row.over .bar-track span {
+  background: var(--red);
+}
+.budget-row.over small {
+  color: var(--red);
+  font-weight: 600;
+}
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+.inline-form.wrap {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.inline-form input,
+.inline-form select {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font: inherit;
+  background: var(--paper);
+}
+.merchant-list {
+  margin: 0;
+  padding-left: 18px;
+}
+.merchant-list li {
+  padding: 4px 0;
+}
+.merchant-list li span:first-child {
+  display: inline-block;
+  min-width: 55%;
+}
+.merchant-list small {
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .inline-form {
+    grid-template-columns: 1fr;
+  }
+}

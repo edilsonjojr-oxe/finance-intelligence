@@ -97,7 +97,11 @@ export type FinanceState = {
   categories: string[];
   /** Partes de lançamentos divididos entre categorias. */
   splits: Split[];
+  budgets: Budget[];
+  goals: Goal[];
 };
+export type Budget = { category: string; amount: string };
+export type Goal = { id: string; name: string; target: string; saved: string; deadline: string | null; account_id: string | null };
 export type Split = {
   transaction_id: string;
   category: string;

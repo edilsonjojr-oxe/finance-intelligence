@@ -19,6 +19,8 @@ import type {
   Batch,
   FinanceState,
   Split,
+  Budget,
+  Goal,
 } from "../lib/types";
 import { parseImport } from "./imports";
 import { contractDetailsSchema, financialDescription } from "../lib/intake";
@@ -195,10 +197,14 @@ export async function getFinance(user: string): Promise<FinanceState> {
         [user],
       )
     ).rows;
+    const budgets = (await db.query<Budget>("SELECT category,amount::text FROM budgets WHERE user_id=$1 ORDER BY category", [user])).rows;
+    const goals = (await db.query<Goal>("SELECT id,name,target::text,saved::text,deadline::text,account_id FROM goals WHERE user_id=$1 ORDER BY created_at", [user])).rows;
     const today = localToday();
     return {
       categories,
       splits,
+      budgets,
+      goals,
       accounts: accounts.map((a) => ({
         ...a,
         balance: balanceFor(a, transactions, today),
@@ -222,6 +228,7 @@ export async function financeAction(
   return transaction(user, async (db) => {
     if(action==='intake.confirm') return (await import('./intake')).confirmIntake(db,user,payload);
     if(['loan.create','sheet.import','obligation.mark_paid','obligation.reopen'].includes(action)) return (await import('./loans')).loanAction(db,user,action,payload);
+    if(action.startsWith('budget.')||action.startsWith('goal.')) return (await import('./planning')).planningAction(db,user,action,payload);
     if(action==='import.discard') {
       const v=z.object({id}).parse(payload);
       const rows=await db.query("UPDATE import_batches SET status='discarded' WHERE user_id=$1 AND id=$2 AND status='review' RETURNING id",[user,v.id]);

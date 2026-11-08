@@ -40,6 +40,7 @@ import {
   CreditCard,
   Pencil,
   HandCoins,
+  BarChart3,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
 import { categoryBreakdown, forecast, isCard, nextDueDate, totals } from "@/lib/finance";
@@ -54,6 +55,7 @@ import SessionPanel from "./session-panel";
 import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
 import LoansPage from "./loans-page";
+import ReportsPage from "./reports-page";
 import SheetImport from "./sheet-import";
 import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
@@ -67,6 +69,7 @@ type Page =
   | "obligations"
   | "contracts"
   | "loans"
+  | "reports"
   | "imports"
   | "forecast"
   | "settings";
@@ -87,6 +90,7 @@ const navigation = [
   { id: "obligations", label: "Compromissos", icon: CalendarDays },
   { id: "contracts", label: "Contratos", icon: FileText },
   { id: "loans", label: "Empréstimos", icon: HandCoins },
+  { id: "reports", label: "Relatórios", icon: BarChart3 },
   { id: "imports", label: "Importações", icon: Upload },
   { id: "forecast", label: "Projeção de caixa", icon: TrendingUp },
 ] as const;
@@ -116,6 +120,10 @@ const pageText: Record<Page, { title: string; subtitle: string }> = {
     title: "Quem deve a quem, sem esquecer nada.",
     subtitle:
       "Empréstimos com pessoas ou bancos e acordos de dívida, parcela por parcela.",
+  },
+  reports: {
+    title: "Para onde vai o dinheiro.",
+    subtitle: "Orçamentos, metas e comparações mês a mês.",
   },
   imports: {
     title: "Menos digitação. Mais controle.",
@@ -1701,6 +1709,7 @@ export default function FinanceApp() {
               )}
             </>
           )}
+          {page === "reports" && <ReportsPage data={data} act={act} />}
           {page === "loans" && (
             <LoansPage data={data} act={act} onPay={(id) => open("settle", id)} />
           )}
