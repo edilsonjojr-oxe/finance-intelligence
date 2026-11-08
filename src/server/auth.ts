@@ -255,3 +255,68 @@ export async function logoutEverywhere(userId: string) {
     return r.rows.length;
   });
 }
+
+// ---------------------------------------------------------------------------------------------
+// Recuperação de senha por e-mail: link de uso único (só o hash fica no banco), 30 minutos,
+// resposta igual exista ou não a conta, e todas as sessões encerradas ao trocar a senha.
+export const RESET_MINUTES = 30;
+export const resetToken = /^[A-Za-z0-9_-]{40,64}$/;
+export async function requestPasswordReset(email: string, origin: string) {
+  email = email.trim().toLowerCase();
+  await rateLimit(email);
+  const issued = await transaction(null, async (db) => {
+    const user = (await db.query<{ id: string; name: string }>("SELECT id,name FROM users WHERE lower(email)=lower($1)", [email])).rows[0];
+    if (!user) return null;
+    const recent = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM password_resets WHERE user_id=$1 AND created_at > now() - interval '1 hour'",
+      [user.id],
+    );
+    if (recent.rows[0].n >= 3) return null; // silencioso: não revela nada a quem tenta abusar
+    const token = randomBytes(32).toString("base64url");
+    // Um link novo invalida os anteriores ainda não usados.
+    await db.query("UPDATE password_resets SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", [user.id]);
+    await db.query(
+      `INSERT INTO password_resets(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '${RESET_MINUTES} minutes')`,
+      [hash(token), user.id],
+    );
+    await db.query("SELECT set_config('app.user_id',$1,true)", [user.id]);
+    await db.query("INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'auth.reset_requested',NULL,'{}')", [randomUUID(), user.id]);
+    return { token, name: user.name };
+  });
+  if (!issued) return;
+  const { sendMail } = await import("./mail");
+  const link = `${origin.replace(/\/$/, "")}/#redefinir=${issued.token}`;
+  const first = issued.name.split(" ")[0] || "";
+  await sendMail(
+    email,
+    "Redefinir sua senha · Finance Intelligence",
+    `Olá${first ? `, ${first}` : ""}.\n\nPara criar uma nova senha, abra o link abaixo (vale por ${RESET_MINUTES} minutos e só pode ser usado uma vez):\n${link}\n\nSe não foi você, ignore este e-mail; sua senha continua a mesma.`,
+    `<div style="font-family:Inter,Arial,sans-serif;background:#111;color:#f2efe8;padding:28px;border-radius:12px;max-width:520px">
+      <p style="margin:0 0 6px;color:#c9a84c;font-weight:600">Finance Intelligence</p>
+      <h2 style="margin:0 0 14px;color:#faf8f3">Redefinir sua senha</h2>
+      <p>Olá${first ? `, ${first.replace(/[<>&"]/g, "")}` : ""}. Para criar uma nova senha, use o botão abaixo. Ele vale por ${RESET_MINUTES} minutos e só pode ser usado uma vez.</p>
+      <p style="margin:22px 0"><a href="${link}" style="background:#ffd700;color:#1a1a1a;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:600">Criar nova senha</a></p>
+      <p style="color:#a9a39a;font-size:13px">Se não foi você, ignore este e-mail; sua senha continua a mesma.</p>
+    </div>`,
+  );
+}
+export async function resetPassword(token: string, password: string) {
+  const encoded = await passwordHash(password);
+  await transaction(null, async (db) => {
+    const row = (
+      await db.query<{ user_id: string }>(
+        "UPDATE password_resets SET used_at=now() WHERE token_hash=$1 AND used_at IS NULL AND expires_at > now() RETURNING user_id",
+        [hash(token)],
+      )
+    ).rows[0];
+    if (!row) throw new AppError("Link inválido ou expirado. Peça um novo em “Esqueci minha senha”.", 400);
+    await db.query("UPDATE users SET password_hash=$1 WHERE id=$2", [encoded, row.user_id]);
+    const ended = await db.query("DELETE FROM sessions WHERE user_id=$1 RETURNING token_hash", [row.user_id]);
+    await db.query("SELECT set_config('app.user_id',$1,true)", [row.user_id]);
+    await db.query("INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'auth.password_reset',NULL,$3)", [
+      randomUUID(),
+      row.user_id,
+      JSON.stringify({ sessions_ended: ended.rows.length }),
+    ]);
+  });
+}

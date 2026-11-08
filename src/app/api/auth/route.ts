@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authenticate, authStatus, createInvite, logout, logoutEverywhere, requireUser, sessionCookie, SESSION_MAX_DAYS } from "@/server/auth";
+import { AppError, authenticate, authStatus, createInvite, logout, logoutEverywhere, requestPasswordReset, requireUser, resetPassword, resetToken, sessionCookie, SESSION_MAX_DAYS } from "@/server/auth";
+import { isHostedDeployment } from "@/server/deployment-config";
+import { mailConfigured } from "@/server/mail";
 import { errorResponse, readBody } from "@/server/http";
 import { secureCookies } from "@/server/deployment-config";
 import { transaction } from "@/server/db";
@@ -35,6 +37,26 @@ export async function POST(request: NextRequest) {
     if (body.action === "invite") {
       const user = await requireUser(request.cookies.get(sessionCookie)?.value);
       return NextResponse.json(await createInvite(user.id));
+    }
+    if (body.action === "reset_request") {
+      const { email } = z.object({ email: z.string().trim().toLowerCase().email().max(254) }).parse(body);
+      // Hospedado: o link usa só APP_ORIGIN (nunca o Host enviado pelo visitante).
+      const origin = isHostedDeployment() ? process.env.APP_ORIGIN || "" : new URL(request.url).origin;
+      if (isHostedDeployment() && (!mailConfigured() || !origin))
+        throw new AppError("A recuperação por e-mail ainda não foi configurada. Peça ajuda a quem administra o app.", 503);
+      try {
+        await requestPasswordReset(email, origin);
+      } catch (error) {
+        if (error instanceof AppError) throw error;
+        console.error("Falha ao enviar e-mail de redefinição:", (error as Error).message);
+        throw new AppError("Não foi possível enviar o e-mail agora. Tente de novo em alguns minutos.", 502);
+      }
+      return NextResponse.json({ ok: true });
+    }
+    if (body.action === "reset_confirm") {
+      const v = z.object({ token: z.string().regex(resetToken), password: z.string().min(12).max(128) }).parse(body);
+      await resetPassword(v.token, v.password);
+      return NextResponse.json({ ok: true });
     }
     if (body.action === "group_preview") {
       // Prévia do link de grupo (sem sessão): só com token válido; o token não vai na URL do servidor.

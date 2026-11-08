@@ -3136,3 +3136,43 @@ nav button.active::before { background: var(--gold); }
 .form-grid > .category-select { grid-column: 1 / -1; }
 .login-copy .login-stats strong { display: block; font-size: 28px; font-weight: 700; color: var(--gold); line-height: 1.1; }
 @media (max-width: 760px) { .login-copy .login-stats strong { font-size: 22px; } }
+/* Recuperação de senha */
+.reset-box { display: grid; gap: 14px; }
+.reset-box > svg { color: var(--gold); }
+.reset-box p { color: var(--muted); }
+.reset-box p strong { color: var(--text); }
+.forgot-link { margin-top: 14px; }
+.login-notice { color: var(--positive); background: rgba(111, 207, 151, 0.08); border: 1px solid rgba(111, 207, 151, 0.35); border-radius: var(--radius); padding: 10px 12px; font-size: 14px; }
+/* Consultor IA */
+.advisor-intro { padding: 28px; display: grid; gap: 14px; max-width: 720px; }
+.advisor-intro > svg { color: var(--gold); }
+.advisor-intro p { color: var(--muted); }
+.advisor-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.advisor-facts li { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; color: var(--text); }
+.advisor-facts svg { color: var(--gold-soft); margin-top: 3px; }
+.advisor-intro .button { justify-self: start; }
+.advisor { display: flex; flex-direction: column; min-height: min(70dvh, 720px); max-width: 860px; }
+.advisor-thread { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.advisor-empty { margin: auto; text-align: center; display: grid; gap: 12px; justify-items: center; color: var(--muted); max-width: 560px; }
+.advisor-empty > svg { color: var(--gold); }
+.advisor-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.advisor-chips button { border: 1.5px solid var(--line-strong); background: transparent; color: var(--text); border-radius: 999px; padding: 8px 14px; font-size: 13.5px; transition: border-color 0.2s, background-color 0.2s; }
+.advisor-chips button:hover { border-color: var(--gold-soft); background: var(--surface-2); }
+.advisor-msg { max-width: 88%; padding: 12px 15px; border-radius: var(--radius-md); font-size: 14.5px; line-height: 1.6; display: grid; gap: 8px; animation: fi-enter 0.3s var(--ease) both; }
+.advisor-msg p { margin: 0; }
+.advisor-msg ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.advisor-msg.user { align-self: flex-end; background: #1f1c10; border: 1px solid rgba(255, 215, 0, 0.3); border-bottom-right-radius: 4px; }
+.advisor-msg.assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.advisor-msg.assistant strong { color: var(--heading); }
+.advisor-msg.is-error { border-color: rgba(242, 139, 130, 0.4); color: var(--danger); }
+.advisor-steps summary { cursor: pointer; font-size: 12.5px; color: var(--gold-soft); display: inline-flex; gap: 6px; align-items: center; }
+.advisor-steps ul { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.advisor-input { display: flex; gap: 10px; align-items: flex-end; padding: 14px 16px; border-top: 1px solid var(--line); }
+.advisor-input textarea { flex: 1; min-height: 46px; max-height: 160px; resize: vertical; }
+.advisor-input .button { min-width: 46px; height: 46px; padding: 0; }
+.advisor-foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; padding: 0 16px 14px; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 760px) {
+  .advisor { min-height: calc(100dvh - 54px - var(--bottom-nav-h) - 140px); }
+  .advisor-thread { padding: 14px; }
+  .advisor-msg { max-width: 94%; }
+}

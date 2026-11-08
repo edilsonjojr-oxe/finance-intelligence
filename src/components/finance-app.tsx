@@ -30,6 +30,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Upload,
   Wallet,
@@ -62,6 +63,8 @@ import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
 import { categoryList, DIVIDED } from "@/lib/categorize";
 import CategorySelect, { CategoryOptions } from "./category-select";
 import CountUp from "./count-up";
+import AdvisorPage from "./advisor-page";
+import { ForgotPassword, ResetPassword, readResetToken } from "./password-reset";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -75,6 +78,7 @@ type Page =
   | "shared"
   | "imports"
   | "forecast"
+  | "advisor"
   | "settings";
 type Modal =
   | "account"
@@ -91,6 +95,7 @@ const navigation = [
   { id: "transactions", label: "Movimentações", short: "Movimentos", icon: ArrowRightLeft, group: "" },
   { id: "accounts", label: "Contas e cartões", short: "Contas", icon: Wallet, group: "" },
   { id: "imports", label: "Importar", short: "Importar", icon: Upload, group: "" },
+  { id: "advisor", label: "Consultor IA", short: "Consultor", icon: Sparkles, group: "" },
   { id: "obligations", label: "Compromissos", short: "Agenda", icon: CalendarDays, group: "Planejamento" },
   { id: "forecast", label: "Projeção de caixa", short: "Projeção", icon: TrendingUp, group: "Planejamento" },
   { id: "reports", label: "Orçamentos e metas", short: "Metas", icon: BarChart3, group: "Planejamento" },
@@ -103,7 +108,7 @@ const bottomNav: Page[] = ["overview", "transactions", "accounts", "imports"];
 const pageSlug: Record<Page, string> = {
   overview: "visao-geral", transactions: "movimentacoes", accounts: "contas", obligations: "compromissos",
   contracts: "contratos", loans: "emprestimos", reports: "orcamentos", shared: "dividir",
-  imports: "importar", forecast: "projecao", settings: "configuracoes",
+  imports: "importar", forecast: "projecao", advisor: "consultor", settings: "configuracoes",
 };
 const pageFromHash = (hash: string): Page | null =>
   (Object.keys(pageSlug) as Page[]).find((k) => `#/${pageSlug[k]}` === hash) || null;
@@ -118,6 +123,7 @@ const pageText: Record<Page, { title: string; subtitle: string }> = {
   reports: { title: "Orçamentos e metas", subtitle: "Limites por categoria, metas e comparação mensal." },
   imports: { title: "Importar", subtitle: "Tudo passa por revisão antes de entrar no saldo." },
   forecast: { title: "Projeção de caixa", subtitle: "Com base em saldos e compromissos cadastrados." },
+  advisor: { title: "Consultor IA", subtitle: "Perguntas e simulações com base nos seus registros." },
   settings: { title: "Configurações", subtitle: "" },
 };
 const dateLabel = (date: string) =>
@@ -347,6 +353,18 @@ function Login({
     [registering, setRegistering] = useState(false);
   const [invite, setInvite] = useState<InvitePreview | null>(null),
     [inviteError, setInviteError] = useState("");
+  const [recover, setRecover] = useState<"" | "forgot" | "reset">(""),
+    [resetTokenValue, setResetTokenValue] = useState(""),
+    [loginNotice, setLoginNotice] = useState("");
+  useEffect(() => {
+    const check = () => {
+      const t = readResetToken();
+      if (t) { setResetTokenValue(t); setRecover("reset"); }
+    };
+    check();
+    window.addEventListener("hashchange", check);
+    return () => window.removeEventListener("hashchange", check);
+  }, []);
   useEffect(() => {
     if (groupInvite) fetchInvitePreview(groupInvite).then((p) => { setInvite(p); setRegistering(true); }).catch((e) => setInviteError(e.message));
   }, [groupInvite]);
@@ -404,6 +422,11 @@ function Login({
       </section>
       <section className="login-form">
         <div className="login-form-inner">
+          {recover === "forgot" ? (
+            <ForgotPassword onBack={() => setRecover("")} />
+          ) : recover === "reset" ? (
+            <ResetPassword token={resetTokenValue} onDone={(m) => { setRecover(""); setResetTokenValue(""); setLoginNotice(m); }} />
+          ) : (<>
           <h2>
             {needsSetup
               ? "Criar acesso"
@@ -503,6 +526,7 @@ function Login({
                 placeholder="Pelo menos 12 caracteres"
               />
             </Field>
+            {loginNotice && !error && <p role="status" className="login-notice">{loginNotice}</p>}
             {error && (
               <p role="alert" className="error">
                 {error}
@@ -517,6 +541,12 @@ function Login({
               <ArrowRight size={17} />
             </button>
           </form>
+          {!creating && (
+            <button type="button" className="text-button forgot-link" onClick={() => { setError(""); setLoginNotice(""); setRecover("forgot"); }}>
+              Esqueci minha senha
+            </button>
+          )}
+          </>)}
           <div className="privacy-note">
             <ShieldCheck size={19} />
             <span>
@@ -1674,6 +1704,7 @@ export default function FinanceApp() {
           )}
           {page === "reports" && <ReportsPage data={data} act={act} />}
           {page === "shared" && <SharedPage data={data} act={act} />}
+          {page === "advisor" && <AdvisorPage />}
           {page === "loans" && (
             <LoansPage data={data} act={act} onPay={(id) => open("settle", id)} />
           )}
