@@ -41,9 +41,10 @@ import {
   Pencil,
   HandCoins,
   BarChart3,
+  Users,
 } from "lucide-react";
 import { brl, cents, decimal, localToday } from "@/lib/money";
-import { categoryBreakdown, forecast, isCard, nextDueDate, totals } from "@/lib/finance";
+import { categoryBreakdown, forecast, isCard, isLiquid, nextDueDate, totals } from "@/lib/finance";
 import { cardStatus } from "@/lib/card-cycle";
 import type { FinanceState, ForecastPoint, Movement } from "@/lib/types";
 import SourceIntake, { ContractTerms, normalizeContractForm } from "./source-intake";
@@ -56,6 +57,7 @@ import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
 import LoansPage from "./loans-page";
 import ReportsPage from "./reports-page";
+import SharedPage from "./shared-page";
 import SheetImport from "./sheet-import";
 import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
@@ -70,6 +72,7 @@ type Page =
   | "contracts"
   | "loans"
   | "reports"
+  | "shared"
   | "imports"
   | "forecast"
   | "settings";
@@ -90,6 +93,7 @@ const navigation = [
   { id: "obligations", label: "Compromissos", icon: CalendarDays },
   { id: "contracts", label: "Contratos", icon: FileText },
   { id: "loans", label: "Empréstimos", icon: HandCoins },
+  { id: "shared", label: "Dividir", icon: Users },
   { id: "reports", label: "Relatórios", icon: BarChart3 },
   { id: "imports", label: "Importações", icon: Upload },
   { id: "forecast", label: "Projeção de caixa", icon: TrendingUp },
@@ -120,6 +124,10 @@ const pageText: Record<Page, { title: string; subtitle: string }> = {
     title: "Quem deve a quem, sem esquecer nada.",
     subtitle:
       "Empréstimos com pessoas ou bancos e acordos de dívida, parcela por parcela.",
+  },
+  shared: {
+    title: "Despesas divididas, contas em dia.",
+    subtitle: "Divida com quem mora ou viaja com você; cada um vê só a própria parte nas finanças.",
   },
   reports: {
     title: "Para onde vai o dinheiro.",
@@ -738,7 +746,7 @@ export default function FinanceApp() {
     );
   const sum = totals(data.transactions, month);
   // Disponível = contas (sem cartões). Cartões mostram a fatura em aberto separadamente.
-  const bankAccounts = data.accounts.filter((a) => !isCard(a));
+  const bankAccounts = data.accounts.filter(isLiquid);
   const cards = data.accounts.filter(isCard);
   const balance = decimal(bankAccounts.reduce((n, a) => n + cents(a.balance), 0n));
   const cardDebt = decimal(
@@ -1710,6 +1718,7 @@ export default function FinanceApp() {
             </>
           )}
           {page === "reports" && <ReportsPage data={data} act={act} />}
+          {page === "shared" && <SharedPage data={data} act={act} />}
           {page === "loans" && (
             <LoansPage data={data} act={act} onPay={(id) => open("settle", id)} />
           )}

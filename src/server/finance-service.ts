@@ -140,6 +140,8 @@ export async function insertMovement(
 export async function getFinance(user: string): Promise<FinanceState> {
   return transaction(user, async (db) => {
     await (await import("./intake")).cleanupDrafts(db,user);
+    // Sincroniza antes de ler o ledger: ajustes e lançamentos automáticos já aparecem nesta leitura.
+    const shared = await (await import("./shared")).sharedState(db, user);
     const accounts = (
       await db.query<Account>(
         "SELECT id,name,institution,type,opening_balance::text,opening_date::text,card_brand,card_holder,card_last4,closing_day,due_day,credit_limit::text FROM accounts WHERE user_id=$1 ORDER BY created_at",
@@ -201,6 +203,7 @@ export async function getFinance(user: string): Promise<FinanceState> {
     const goals = (await db.query<Goal>("SELECT id,name,target::text,saved::text,deadline::text,account_id FROM goals WHERE user_id=$1 ORDER BY created_at", [user])).rows;
     const today = localToday();
     return {
+      shared,
       categories,
       splits,
       budgets,
@@ -229,6 +232,7 @@ export async function financeAction(
     if(action==='intake.confirm') return (await import('./intake')).confirmIntake(db,user,payload);
     if(['loan.create','sheet.import','obligation.mark_paid','obligation.reopen'].includes(action)) return (await import('./loans')).loanAction(db,user,action,payload);
     if(action.startsWith('budget.')||action.startsWith('goal.')) return (await import('./planning')).planningAction(db,user,action,payload);
+    if(/^(connect|group|shared|settle)\./.test(action)) return (await import('./shared')).sharedAction(db,user,action,payload);
     if(action==='import.discard') {
       const v=z.object({id}).parse(payload);
       const rows=await db.query("UPDATE import_batches SET status='discarded' WHERE user_id=$1 AND id=$2 AND status='review' RETURNING id",[user,v.id]);

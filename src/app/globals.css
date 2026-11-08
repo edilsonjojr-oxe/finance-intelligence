@@ -2682,3 +2682,80 @@ dd {
     grid-template-columns: 1fr;
   }
 }
+
+/* Dividir */
+.auth-switch.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+.shared-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.split-people {
+  display: grid;
+  gap: 6px;
+}
+.split-person {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 100px 90px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.split-person input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+.split-person strong {
+  text-align: right;
+}
+.group-card {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+.group-card h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 16px;
+}
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 13px;
+}
+.confirm-row > span {
+  flex: 1 1 200px;
+}
+.confirm-row select {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--paper);
+}
+.confirm-row.notice {
+  color: var(--orange);
+}
+@media (max-width: 560px) {
+  .auth-switch.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .split-person {
+    grid-template-columns: auto minmax(0, 1fr) 90px;
+  }
+  .split-person input:not([type="checkbox"]) {
+    grid-column: 2;
+  }
+}

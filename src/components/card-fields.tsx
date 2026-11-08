@@ -7,6 +7,7 @@ export const accountTypeLabel: Record<string, string> = {
   cash: 'Dinheiro',
   investment: 'Investimento',
   credit_card: 'Cartão de crédito',
+  receivable: 'A receber',
 };
 export const cardBrands = ['Mastercard', 'Visa', 'Elo', 'American Express', 'Hipercard', 'Outra'];
 

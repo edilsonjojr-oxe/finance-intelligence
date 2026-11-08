@@ -22,6 +22,8 @@ export function balanceFor(
   return decimal(balance);
 }
 export const isCard = (a: Pick<Account, "type">) => a.type === "credit_card";
+/** Dinheiro disponível: exclui cartões (dívida) e "Valores a receber" (crédito com terceiros). */
+export const isLiquid = (a: Pick<Account, "type">) => a.type !== "credit_card" && a.type !== "receivable";
 
 export type CategoryGroupTotal = { group: string; total: bigint; subs: { name: string; total: bigint }[] };
 /**
@@ -98,7 +100,7 @@ export function forecast(
   // Dinheiro disponível = contas que não são cartão. A dívida de cada cartão entra como
   // saída no vencimento da fatura (pagamento), em vez de reduzir o saldo hoje.
   let balance = accounts
-    .filter((a) => !isCard(a))
+    .filter(isLiquid)
     .reduce((sum, a) => sum + cents(a.balance), 0n);
   const cardBills: { date: string; amount: bigint }[] = [];
   for (const a of accounts.filter(isCard)) {

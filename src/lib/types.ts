@@ -99,6 +99,21 @@ export type FinanceState = {
   splits: Split[];
   budgets: Budget[];
   goals: Goal[];
+  shared: SharedState;
+};
+export type SharedMember = { id: string; user_id: string | null; name: string; role: string; removed: boolean; me: boolean };
+export type SharedExpense = { id: string; description: string; total: string; date: string; category: string; payer_member_id: string; split_mode: string; mine: boolean; shares: Record<string, string> };
+export type SharedGroup = {
+  id: string; name: string; kind: string; status: string; owner: boolean; my_member_id: string; auto_post: boolean; auto_account_id: string | null;
+  members: SharedMember[]; expenses: SharedExpense[];
+  settlements: { id: string; from_member_id: string; to_member_id: string; amount: string; date: string; status: string }[];
+  balances: Record<string, string>;
+};
+export type SharedState = {
+  connections: { id: string; user_id: string; name: string; email: string; status: string; incoming: boolean }[];
+  groups: SharedGroup[];
+  inbox: { expense_id: string; group_id: string; group_name: string; description: string; total: string; date: string; my_share: string; i_am_payer: boolean; payer_name: string }[];
+  notices: { expense_id: string; notice: string }[];
 };
 export type Budget = { category: string; amount: string };
 export type Goal = { id: string; name: string; target: string; saved: string; deadline: string | null; account_id: string | null };

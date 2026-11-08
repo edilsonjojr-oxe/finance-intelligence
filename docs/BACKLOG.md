@@ -49,14 +49,18 @@ Modelo contábil adotado: pagador vê saída de caixa total, despesa só da pró
 "a receber" (fora dos relatórios de gasto); participante recebe a parte como compromisso "a pagar
 para Fulano", que vira despesa ao quitar; reembolso não é receita. Materialização só no ledger do
 próprio usuário (caixa "Para lançar" ou automático por grupo). RLS por membro, sem BYPASSRLS.
-- [ ] 7.1 Conexões (pedido/aceite/recusa/remoção/bloqueio, resposta neutra)
-- [ ] 7.2 Grupo permanente 2+ membros (modelo pronto para Etapa 2)
-- [ ] 7.3 Despesa dividida: igual, selecionados, exatos, % (centavos determinísticos, zod no servidor)
-- [ ] 7.4 Ler comprovante reaproveitando o leitor
-- [ ] 7.5 Materialização sem dupla contagem
-- [ ] 7.6 Acerto entre membros + saldo líquido por pessoa
-- [ ] 7.7 Edição/exclusão lógica com ajustes e auditoria
-- [ ] 7.8 Testes: conexão, RLS de terceiro, modos, arredondamento, soma ≠ total, materialização, acerto, edição/exclusão
+- [x] 7.1 Conexões (pedido/aceite/recusa/remoção/bloqueio, resposta neutra)
+- [x] 7.2 Grupo permanente 2+ membros (modelo pronto para Etapa 2)
+- [x] 7.3 Despesa dividida: igual, selecionados, exatos, % (centavos determinísticos, zod no servidor)
+- [x] 7.4 Ler comprovante reaproveitando o leitor
+- [x] 7.5 Materialização sem dupla contagem
+- [x] 7.6 Acerto entre membros + saldo líquido por pessoa
+- [x] 7.7 Edição/exclusão lógica com ajustes e auditoria
+- [x] 7.8 Testes: conexão, RLS de terceiro, modos, arredondamento, soma ≠ total, materialização, acerto, edição/exclusão
+
+> Bloco 7 implementado e testado localmente (commit local). PUBLICAÇÃO PENDENTE: a migração
+> db/009_shared_expenses.sql foi bloqueada pela ferramenta em produção e precisa da autorização do
+> usuário. Não enviar o código antes de aplicar a 009 (o app recusa iniciar com migração pendente).
 
 ## 8. Grupos de divisão (Etapa 2)
 Decisões padrão: upgrade de "só divisão" para completa apenas por convite normal de usuário

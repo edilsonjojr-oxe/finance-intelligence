@@ -20,7 +20,8 @@
     "start:cloud": "node scripts/start-cloud.mjs",
     "test:multiuser": "tsx tests/multiuser.ts",
     "test:cards": "tsx tests/cards.ts",
-    "test:loans": "tsx tests/loans.ts"
+    "test:loans": "tsx tests/loans.ts",
+    "test:shared": "tsx tests/shared.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",
