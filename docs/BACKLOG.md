@@ -71,8 +71,7 @@ completo; membro sem conta (só nome) incluído, vinculável depois.
 - [x] 8.6 Materialização opcional para conta completa
 - [x] 8.7 Feed de atividade e CSV de encerramento
 
-> Bloco 8 pronto e testado (commit local). PUBLICAÇÃO PENDENTE: aplicar db/010_split_groups.sql no Supabase
-> (bloqueada pela ferramenta; precisa de autorização) e só depois enviar o código. Testes: npm run test:split.
+> Bloco 8 publicado em 2026-11-08 (migração 010 aplicada no Supabase). Testes: npm run test:split.
 
 ## 9. Testes e qualidade (contínuo)
 - [ ] 9.1 http-run com as novas funcionalidades

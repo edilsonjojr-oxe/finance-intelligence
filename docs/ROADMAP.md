@@ -71,7 +71,7 @@ revisão (marcar/desmarcar, categoria sugerida, conta ou cartão) antes de grava
   valores exatos, %), parte de cada um lançada no próprio ledger sem dupla contagem, acerto.
 - Plano contábil a aprovar antes de implementar.
 
-### Fase K — Grupos de divisão (Etapa 2) — pronta, publicação pendente
+### Fase K — Grupos de divisão (Etapa 2) — concluída
 - Viagem/Evento, convite por link, conta "só divisão", simplificar dívidas, feed, CSV.
 
 ### Fase H — Depois
