@@ -2759,3 +2759,73 @@ dd {
     grid-column: 2;
   }
 }
+.mini-title {
+  margin: 4px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #6b7a72);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.settle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.settle-row > span:first-child {
+  flex: 1 1 140px;
+}
+.settle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.settle-actions input,
+.settle-actions select,
+.invite-box select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  background: var(--paper);
+  min-width: 0;
+}
+.settle-actions input {
+  width: 90px;
+}
+.invite-box {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.invite-link {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.feed {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.feed small {
+  color: var(--muted, #6b7a72);
+  margin-right: 4px;
+}
+.join-card {
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+.login-invite {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eaf5ed;
+  color: #2f5f42;
+  font-size: 14px;
+  margin-bottom: 12px;
+}

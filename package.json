@@ -21,7 +21,8 @@
     "test:multiuser": "tsx tests/multiuser.ts",
     "test:cards": "tsx tests/cards.ts",
     "test:loans": "tsx tests/loans.ts",
-    "test:shared": "tsx tests/shared.ts"
+    "test:shared": "tsx tests/shared.ts",
+    "test:split": "tsx tests/split-groups.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.15",

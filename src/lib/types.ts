@@ -101,15 +101,20 @@ export type FinanceState = {
   goals: Goal[];
   shared: SharedState;
 };
-export type SharedMember = { id: string; user_id: string | null; name: string; role: string; removed: boolean; me: boolean };
+export type SharedMember = { id: string; user_id: string | null; name: string; role: string; removed: boolean; me: boolean; guest: boolean };
 export type SharedExpense = { id: string; description: string; total: string; date: string; category: string; payer_member_id: string; split_mode: string; mine: boolean; shares: Record<string, string> };
 export type SharedGroup = {
-  id: string; name: string; kind: string; status: string; owner: boolean; my_member_id: string; auto_post: boolean; auto_account_id: string | null;
+  id: string; name: string; kind: string; status: string; starts_on: string | null; ends_on: string | null; owner: boolean; my_member_id: string;
+  auto_post: boolean; auto_account_id: string | null; skip_ledger: boolean;
   members: SharedMember[]; expenses: SharedExpense[];
+  suggestions: { from: string; to: string; amount: string }[];
+  invites: { id: string; expires_at: string; uses: number; max_uses: number }[];
+  feed: { at: string; text: string }[];
   settlements: { id: string; from_member_id: string; to_member_id: string; amount: string; date: string; status: string }[];
   balances: Record<string, string>;
 };
 export type SharedState = {
+  plan: string;
   connections: { id: string; user_id: string; name: string; email: string; status: string; incoming: boolean }[];
   groups: SharedGroup[];
   inbox: { expense_id: string; group_id: string; group_name: string; description: string; total: string; date: string; my_share: string; i_am_payer: boolean; payer_name: string }[];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeSplit, memberBalances } from '../src/lib/split';
+import { computeSplit, memberBalances, simplifyDebts } from '../src/lib/split';
 
 const members = ['a', 'b', 'c'];
 describe('Divisão de despesas', () => {
@@ -28,5 +28,10 @@ describe('Divisão de despesas', () => {
       { payer: 'b', total: '100.00', shares: { a: '50.00', b: '50.00' } },
     ], [{ from: 'b', to: 'a', amount: '60.00', status: 'confirmed' }, { from: 'b', to: 'a', amount: '40.00', status: 'pending' }]);
     expect(bal).toEqual({ a: 4000n, b: -4000n });
+  });
+  it('simplifica dívidas com no máximo n−1 pagamentos', () => {
+    expect(simplifyDebts({ a: 50000n, b: -10000n, c: -40000n })).toEqual([{ from: 'c', to: 'a', amount: '400.00' }, { from: 'b', to: 'a', amount: '100.00' }]);
+    expect(simplifyDebts({ a: 3000n, b: 2000n, c: -1000n, d: -4000n })).toEqual([{ from: 'd', to: 'a', amount: '30.00' }, { from: 'd', to: 'b', amount: '10.00' }, { from: 'c', to: 'b', amount: '10.00' }]);
+    expect(simplifyDebts({ a: 0n, b: 0n })).toEqual([]);
   });
 });

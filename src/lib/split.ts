@@ -80,3 +80,24 @@ export function memberBalances(
   for (const s of settlements) if (s.status === 'confirmed') { bal[s.from] = (bal[s.from] || 0n) + cents(s.amount); bal[s.to] = (bal[s.to] || 0n) - cents(s.amount); }
   return bal;
 }
+
+/**
+ * Simplifica as dívidas: menor número de pagamentos que zera todos os saldos.
+ * Guloso (maior devedor paga ao maior credor); no máximo n−1 transferências.
+ */
+export function simplifyDebts(balances: Record<string, bigint>) {
+  const debtors = Object.entries(balances).filter(([, v]) => v < 0n).map(([id, v]) => ({ id, v: -v }));
+  const creditors = Object.entries(balances).filter(([, v]) => v > 0n).map(([id, v]) => ({ id, v }));
+  const out: { from: string; to: string; amount: string }[] = [];
+  const byLargest = (a: { v: bigint }, b: { v: bigint }) => (b.v > a.v ? 1 : b.v < a.v ? -1 : 0);
+  while (debtors.length && creditors.length) {
+    debtors.sort(byLargest); creditors.sort(byLargest);
+    const d = debtors[0], c = creditors[0];
+    const pay = d.v < c.v ? d.v : c.v;
+    out.push({ from: d.id, to: c.id, amount: decimal(pay) });
+    d.v -= pay; c.v -= pay;
+    if (d.v === 0n) debtors.shift();
+    if (c.v === 0n) creditors.shift();
+  }
+  return out;
+}

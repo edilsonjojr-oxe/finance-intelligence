@@ -42,8 +42,8 @@ export async function authStatus(token?: string) {
       "SELECT count(*)::text AS count FROM users",
     );
     const result = token
-      ? await db.query<{ id: string; name: string; email: string }>(
-          "SELECT u.id,u.name,u.email FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at > now()",
+      ? await db.query<{ id: string; name: string; email: string; plan: string }>(
+          "SELECT u.id,u.name,u.email,u.plan FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at > now()",
           [hash(token)],
         )
       : { rows: [] };
@@ -75,6 +75,9 @@ export const normalizeInvite = (code: string) =>
 export async function createInvite(userId: string) {
   const code = Array.from({ length: 12 }, () => inviteAlphabet[randomInt(inviteAlphabet.length)]).join("");
   return transaction(userId, async (db) => {
+    const plan = await db.query<{ plan: string }>("SELECT plan FROM users WHERE id=$1", [userId]);
+    if (plan.rows[0]?.plan !== "full")
+      throw new AppError("Só contas completas podem convidar para o app.", 403);
     const recent = await db.query<{ n: number }>(
       "SELECT count(*)::int AS n FROM invites WHERE created_by=$1 AND created_at > now() - interval '1 day'",
       [userId],
@@ -135,11 +138,12 @@ async function useInvite(db: DB, code: string) {
 }
 
 export async function authenticate(
-  mode: "setup" | "login" | "register",
+  mode: "setup" | "login" | "register" | "split",
   email: string,
   password: string,
   name = "",
   code = "",
+  claim = "",
 ) {
   email = email.trim().toLowerCase();
   if (mode === "setup") checkSetupToken(code);
@@ -147,21 +151,59 @@ export async function authenticate(
   const encoded = mode === "login" ? null : await passwordHash(password);
   return transaction(null, async (db) => {
     await db.query("SELECT pg_advisory_xact_lock(7182361)");
-    if (mode === "setup" || mode === "register") {
-      const id = randomUUID();
+    if (mode === "setup" || mode === "register" || mode === "split") {
+      let id: string = randomUUID();
       if (mode === "setup") {
         const existing = await db.query("SELECT id FROM users LIMIT 1");
         if (existing.rows.length)
           throw new AppError("O primeiro perfil já foi criado. Use Entrar ou um convite.", 409);
       }
       const inviter = mode === "register" ? await useInvite(db, code) : null;
-      const taken = await db.query("SELECT 1 FROM users WHERE lower(email)=lower($1)", [email]);
-      if (taken.rows.length)
-        throw new AppError("Este e-mail já tem acesso. Use Entrar.", 409);
-      await db.query(
-        "INSERT INTO users(id,name,email,password_hash) VALUES($1,$2,$3,$4)",
-        [id, name, email, encoded],
+      if (mode === "split") {
+        // Conta "só divisão" pelo link de um grupo: limite global contra cadastro em massa.
+        const recent = await db.query<{ n: number }>(
+          "SELECT count(*)::int AS n FROM users WHERE plan='split_only' AND created_at > now() - interval '1 hour'",
+        );
+        if (recent.rows[0].n >= 30)
+          throw new AppError("Muitos cadastros agora. Tente mais tarde.", 429);
+      }
+      const taken = await db.query<{ id: string; plan: string; password_hash: string }>(
+        "SELECT id,plan,password_hash FROM users WHERE lower(email)=lower($1)",
+        [email],
       );
+      const existing = taken.rows[0];
+      // Convite completo para quem já tem conta "só divisão": vira conta completa (com a senha dela).
+      const upgrade =
+        mode === "register" && existing?.plan === "split_only" &&
+        (await verifyPassword(password, existing.password_hash));
+      if (existing && !upgrade)
+        throw new AppError(
+          mode === "split"
+            ? "Este e-mail já tem acesso. Entre com ele e abra o link de novo."
+            : "Este e-mail já tem acesso. Use Entrar.",
+          409,
+        );
+      if (upgrade) {
+        id = existing.id;
+        await db.query("UPDATE users SET plan='full' WHERE id=$1", [id]);
+      } else
+        await db.query(
+          "INSERT INTO users(id,name,email,password_hash,plan) VALUES($1,$2,$3,$4,$5)",
+          [id, name, email, encoded, mode === "split" ? "split_only" : "full"],
+        );
+      if (mode === "split") {
+        await db.query("SELECT set_config('app.user_id',$1,true)", [id]);
+        const joined = await db.query<{ g: string | null }>(
+          "SELECT fi_join_by_invite($1,$2) AS g",
+          [hash(code), claim || null],
+        );
+        if (!joined.rows[0]?.g)
+          throw new AppError("Convite inválido, expirado ou esgotado.", 403);
+        await db.query(
+          "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'invite.joined',$3,'{\"split_only\":true}')",
+          [randomUUID(), id, joined.rows[0].g],
+        );
+      }
       if (inviter) {
         await db.query(
           "UPDATE invites SET used_by=$1,used_at=now() WHERE code_hash=$2",
@@ -170,8 +212,8 @@ export async function authenticate(
         // A auditoria tem RLS por dono: identifica o novo usuário nesta transação.
         await db.query("SELECT set_config('app.user_id',$1,true)", [id]);
         await db.query(
-          "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,'invite.accepted',NULL,'{}')",
-          [randomUUID(), id],
+          "INSERT INTO audit_events(id,user_id,action,entity_id,details) VALUES($1,$2,$3,NULL,'{}')",
+          [randomUUID(), id, upgrade ? "plan.upgraded" : "invite.accepted"],
         );
       }
     }

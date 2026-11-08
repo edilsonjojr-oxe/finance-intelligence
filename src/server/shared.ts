@@ -6,20 +6,20 @@
 //    "Valores a receber" (não é gasto). Saldo bancário sai o total, como no extrato.
 //  - Participante: a parte vira compromisso "a pagar para Fulano"; vira despesa ao ser quitado.
 //  - Reembolso recebido: transferência "Valores a receber" → conta (não é receita).
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { AppError } from './auth';
+import { AppError, hash } from './auth';
 import type { DB } from './db';
 import { audit, insertMovement } from './finance-service';
 import { cents, decimal, localToday, validDate } from '../lib/money';
 import { cleanCategory, UNCATEGORIZED } from '../lib/categorize';
-import { computeSplit, memberBalances } from '../lib/split';
+import { computeSplit, memberBalances, simplifyDebts } from '../lib/split';
 import { financialDescription } from '../lib/intake';
 
 const id = z.string().uuid();
 const money = z.string().regex(/^\d{1,11}(\.\d{1,2})?$/).refine((v) => cents(v) > 0n, 'O valor deve ser positivo.');
 const date = z.string().refine(validDate, 'Data inválida.');
-type Member = { id: string; group_id: string; user_id: string | null; display_name: string; role: string; auto_post: boolean; auto_account_id: string | null; removed_at: string | null };
+type Member = { id: string; group_id: string; user_id: string | null; display_name: string; role: string; auto_post: boolean; auto_account_id: string | null; skip_ledger: boolean; removed_at: string | null; created_at?: string };
 type Expense = { id: string; group_id: string; created_by: string; payer_member_id: string; description: string; total: string; date: string; category: string; split_mode: string; version: number; deleted_at: string | null };
 type Posting = { id: string; expense_id: string | null; settlement_id: string | null; role: string; version: number; transaction_id: string | null; transfer_id: string | null; obligation_id: string | null; notice: string | null };
 
@@ -33,6 +33,25 @@ async function myMember(db: DB, user: string, group: string) {
   const m = (await db.query<Member>('SELECT * FROM share_members WHERE group_id=$1 AND user_id=$2 AND removed_at IS NULL', [group, user])).rows[0];
   if (!m) throw new AppError('Você não participa deste grupo.', 403);
   return m;
+}
+/** Plano da conta: "split_only" só usa o módulo de divisão, sem ledger próprio. */
+export async function userPlan(db: DB, user: string) {
+  return (await db.query<{ plan: string }>('SELECT plan FROM users WHERE id=$1', [user])).rows[0]?.plan || 'full';
+}
+/** Lança no financeiro do usuário? Só conta completa e grupo sem "não lançar". */
+async function usesLedger(db: DB, user: string, me: Member) {
+  return !me.skip_ledger && (await userPlan(db, user)) === 'full';
+}
+async function activeGroup(db: DB, group: string) {
+  const g = (await db.query<{ status: string; created_by: string }>('SELECT status,created_by FROM share_groups WHERE id=$1', [group])).rows[0];
+  if (!g) throw new AppError('Grupo não encontrado.', 404);
+  if (g.status !== 'active') throw new AppError('Grupo encerrado: não aceita novos lançamentos.', 409);
+  return g;
+}
+async function ownerOf(db: DB, user: string, group: string) {
+  const me = await myMember(db, user, group);
+  if (me.role !== 'owner') throw new AppError('Só quem criou o grupo pode fazer isso.', 403);
+  return me;
 }
 async function connected(db: DB, a: string, b: string) {
   const r = await db.query("SELECT 1 FROM connections WHERE status='accepted' AND ((requester_id=$1 AND addressee_id=$2) OR (requester_id=$2 AND addressee_id=$1))", [a, b]);
@@ -72,6 +91,7 @@ async function materialize(db: DB, user: string, e: Expense, me: Member, account
   const payer = e.payer_member_id === me.id;
   const role = payer ? 'payer' : 'participant';
   if ((await db.query('SELECT 1 FROM shared_postings WHERE user_id=$1 AND expense_id=$2 AND role=$3', [user, e.id, role])).rows.length) return false;
+  if (!(await usesLedger(db, user, me))) return false;
   let posting = { transaction_id: null as string | null, transfer_id: null as string | null, obligation_id: null as string | null };
   if (payer) {
     const account = accountId || me.auto_account_id;
@@ -126,6 +146,9 @@ async function reconcileOne(db: DB, user: string, p: Posting) {
         ids = await payerMovements(db, user, e, cents((await sharesOf(db, e.id))[me.id] || '0'), account);
       await db.query('UPDATE shared_postings SET version=$1,transaction_id=$2,transfer_id=$3 WHERE id=$4', [e.version, ids.transaction_id, ids.transfer_id, p.id]);
       await audit(db, user, 'shared.adjusted', e.id, { deleted: !!e.deleted_at });
+    } else {
+      // Parte marcada como "não lançar": nada no ledger, só acompanha a versão.
+      await db.query('UPDATE shared_postings SET version=$1 WHERE id=$2', [e.version, p.id]);
     }
   }
 }
@@ -135,7 +158,8 @@ export async function sharedState(db: DB, user: string) {
   const memberships = (await db.query<Member>('SELECT * FROM share_members WHERE user_id=$1 AND removed_at IS NULL', [user])).rows;
   if (memberships.length) {
     await reconcile(db, user);
-    for (const me of memberships.filter((m) => m.auto_post)) {
+    const full = (await userPlan(db, user)) === 'full';
+    for (const me of memberships.filter((m) => full && m.auto_post && !m.skip_ledger)) {
       const pending = (await db.query<Expense>(
         `SELECT e.id,e.group_id,e.created_by,e.payer_member_id,e.description,e.total::text,e.date::text,e.category,e.split_mode,e.version,e.deleted_at FROM shared_expenses e
          WHERE e.group_id=$1 AND e.deleted_at IS NULL AND e.date<=$3 AND NOT EXISTS (SELECT 1 FROM shared_postings p WHERE p.user_id=$2 AND p.expense_id=e.id)`, [me.group_id, user, localToday()])).rows;
@@ -147,31 +171,63 @@ export async function sharedState(db: DB, user: string) {
      JOIN users u ON u.id = CASE WHEN c.requester_id=$1 THEN c.addressee_id ELSE c.requester_id END
      WHERE (c.requester_id=$1 OR c.addressee_id=$1) AND NOT (c.status='blocked' AND c.blocked_by<>$1) AND c.status<>'declined' ORDER BY u.name`, [user])).rows
     .map((c) => ({ id: c.id, user_id: c.requester_id === user ? c.addressee_id : c.requester_id, name: c.name, email: c.email, status: c.status, incoming: c.addressee_id === user && c.status === 'pending' }));
+  const plan = await userPlan(db, user);
   const groups = [];
-  for (const g of (await db.query<{ id: string; name: string; kind: string; status: string; created_by: string }>(
-    'SELECT g.id,g.name,g.kind,g.status,g.created_by FROM share_groups g JOIN share_members m ON m.group_id=g.id AND m.user_id=$1 AND m.removed_at IS NULL ORDER BY g.created_at', [user])).rows) {
-    const members = (await db.query<Member>('SELECT * FROM share_members WHERE group_id=$1 ORDER BY created_at', [g.id])).rows;
+  for (const g of (await db.query<{ id: string; name: string; kind: string; status: string; created_by: string; starts_on: string | null; ends_on: string | null; closed_at: string | null; created_at: string }>(
+    'SELECT g.id,g.name,g.kind,g.status,g.created_by,g.starts_on::text,g.ends_on::text,g.closed_at::text,g.created_at::text FROM share_groups g JOIN share_members m ON m.group_id=g.id AND m.user_id=$1 AND m.removed_at IS NULL ORDER BY g.status, g.created_at', [user])).rows) {
+    const members = (await db.query<Member>('SELECT id,group_id,user_id,display_name,role,auto_post,auto_account_id,skip_ledger,removed_at::text,created_at::text FROM share_members WHERE group_id=$1 ORDER BY share_members.created_at', [g.id])).rows;
     const me = members.find((m) => m.user_id === user)!;
-    const expenses = (await db.query<Expense>('SELECT id,group_id,created_by,payer_member_id,description,total::text,date::text,category,split_mode,version,deleted_at FROM shared_expenses WHERE group_id=$1 AND deleted_at IS NULL ORDER BY date DESC, created_at DESC', [g.id])).rows;
+    const all = (await db.query<Expense & { created_at: string; updated_at: string }>('SELECT id,group_id,created_by,payer_member_id,description,total::text,date::text,category,split_mode,version,deleted_at::text,created_at::text,updated_at::text FROM shared_expenses WHERE group_id=$1 ORDER BY date DESC, created_at DESC', [g.id])).rows;
+    const expenses = all.filter((e) => !e.deleted_at);
     const shares = (await db.query<{ expense_id: string; member_id: string; amount: string }>('SELECT expense_id,member_id,amount::text FROM shared_shares WHERE group_id=$1', [g.id])).rows;
-    const settlements = (await db.query<{ id: string; from_member_id: string; to_member_id: string; amount: string; date: string; status: string }>('SELECT id,from_member_id,to_member_id,amount::text,date::text,status FROM shared_settlements WHERE group_id=$1 ORDER BY created_at DESC', [g.id])).rows;
+    const settlements = (await db.query<{ id: string; from_member_id: string; to_member_id: string; amount: string; date: string; status: string; created_at: string; confirmed_at: string | null }>('SELECT id,from_member_id,to_member_id,amount::text,date::text,status,created_at::text,confirmed_at::text FROM shared_settlements WHERE group_id=$1 ORDER BY created_at DESC', [g.id])).rows;
+    const invites = me.role === 'owner' ? (await db.query<{ id: string; expires_at: string; uses: number; max_uses: number }>('SELECT id,expires_at::text,uses,max_uses FROM share_invites WHERE group_id=$1 AND revoked_at IS NULL AND expires_at>now() AND uses<max_uses ORDER BY created_at DESC', [g.id])).rows : [];
     const shareMap = (e: string) => Object.fromEntries(shares.filter((s) => s.expense_id === e).map((s) => [s.member_id, s.amount]));
     const balances = memberBalances(members.map((m) => m.id), expenses.map((e) => ({ payer: e.payer_member_id, total: e.total, shares: shareMap(e.id) })),
       settlements.map((s) => ({ from: s.from_member_id, to: s.to_member_id, amount: s.amount, status: s.status })));
+    const nameOf = (id: string) => { const m = members.find((x) => x.id === id); return m ? (m.user_id === user ? 'Você' : m.display_name) : 'alguém'; };
+    const byUser = (u: string) => { const m = members.find((x) => x.user_id === u); return m ? nameOf(m.id) : 'alguém'; };
+    // Feed derivado dos próprios registros (sem tabela extra): quem fez o quê e quando.
+    const feed = [
+      ...members.filter((m) => m.created_at).map((m) => ({ at: m.created_at!, text: `${nameOf(m.id)} entrou no grupo${m.user_id ? '' : ' (sem conta)'}` })),
+      ...members.filter((m) => m.removed_at).map((m) => ({ at: m.removed_at!, text: `${nameOf(m.id)} saiu do grupo` })),
+      ...all.map((e) => ({ at: e.created_at, text: `${byUser(e.created_by)} lançou "${e.description}" (R$ ${e.total.replace('.', ',')})` })),
+      ...all.filter((e) => e.version > 1 && !e.deleted_at).map((e) => ({ at: e.updated_at, text: `${byUser(e.created_by)} alterou "${e.description}"` })),
+      ...all.filter((e) => e.deleted_at).map((e) => ({ at: e.deleted_at!, text: `${byUser(e.created_by)} excluiu "${e.description}"` })),
+      ...settlements.map((s) => ({ at: s.created_at, text: `${nameOf(s.from_member_id)} pagou R$ ${s.amount.replace('.', ',')} a ${nameOf(s.to_member_id).replace(/^Você$/, 'você')}` })),
+      ...settlements.filter((s) => s.confirmed_at).map((s) => ({ at: s.confirmed_at!, text: `${nameOf(s.to_member_id)} confirmou o recebimento de R$ ${s.amount.replace('.', ',')}` })),
+      ...(g.closed_at ? [{ at: g.closed_at, text: 'Grupo encerrado' }] : []),
+    ].sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 40);
     groups.push({
-      id: g.id, name: g.name, kind: g.kind, status: g.status, owner: g.created_by === user, my_member_id: me.id, auto_post: me.auto_post, auto_account_id: me.auto_account_id,
-      members: members.map((m) => ({ id: m.id, user_id: m.user_id, name: m.display_name, role: m.role, removed: !!m.removed_at, me: m.user_id === user })),
+      id: g.id, name: g.name, kind: g.kind, status: g.status, starts_on: g.starts_on, ends_on: g.ends_on, owner: me.role === 'owner', my_member_id: me.id,
+      auto_post: me.auto_post, auto_account_id: me.auto_account_id, skip_ledger: me.skip_ledger || plan !== 'full',
+      members: members.map((m) => ({ id: m.id, user_id: m.user_id, name: m.display_name, role: m.role, removed: !!m.removed_at, me: m.user_id === user, guest: !m.user_id })),
       expenses: expenses.map((e) => ({ id: e.id, description: e.description, total: e.total, date: e.date, category: e.category, payer_member_id: e.payer_member_id, split_mode: e.split_mode, mine: e.created_by === user, shares: shareMap(e.id) })),
-      settlements, balances: Object.fromEntries(Object.entries(balances).map(([k, v]) => [k, decimal(v)])),
+      settlements: settlements.map(({ created_at: _c, confirmed_at: _k, ...s }) => s), balances: Object.fromEntries(Object.entries(balances).map(([k, v]) => [k, decimal(v)])),
+      suggestions: simplifyDebts(balances), invites, feed,
     });
   }
   const posted = new Set((await db.query<{ expense_id: string; role: string }>('SELECT expense_id,role FROM shared_postings WHERE user_id=$1 AND expense_id IS NOT NULL', [user])).rows.map((r) => `${r.expense_id}|${r.role}`));
   const pendingRole = (g: { my_member_id: string }, e: { id: string; payer_member_id: string; shares: Record<string, string> }) =>
     e.payer_member_id === g.my_member_id ? !posted.has(`${e.id}|payer`) : cents(e.shares[g.my_member_id] || '0') > 0n && !posted.has(`${e.id}|participant`);
-  const inbox = groups.flatMap((g) => g.expenses.filter((e) => pendingRole(g, e))
+  const inbox = groups.filter((g) => !g.skip_ledger).flatMap((g) => g.expenses.filter((e) => pendingRole(g, e))
     .map((e) => ({ expense_id: e.id, group_id: g.id, group_name: g.name, description: e.description, total: e.total, date: e.date, my_share: e.shares[g.my_member_id] || '0.00', i_am_payer: e.payer_member_id === g.my_member_id, payer_name: g.members.find((m) => m.id === e.payer_member_id)?.name || '' })));
   const notices = (await db.query<{ expense_id: string; notice: string }>('SELECT expense_id,notice FROM shared_postings WHERE user_id=$1 AND notice IS NOT NULL ORDER BY created_at DESC LIMIT 20', [user])).rows;
-  return { connections, groups, inbox, notices };
+  return { plan, connections, groups, inbox, notices };
+}
+
+export const inviteToken = z.string().regex(/^[A-Za-z0-9_-]{20,64}$/, 'Convite inválido.');
+/** Prévia de um link de convite (sem sessão): nome do grupo, quem convidou e membros sem conta. */
+export async function invitePreview(db: DB, token: string) {
+  const r = (await db.query<{ group_name: string; kind: string; inviter: string; guests: { id: string; name: string }[] }>('SELECT * FROM fi_invite_preview($1)', [hash(token)])).rows[0];
+  if (!r) throw new AppError('Convite inválido, expirado ou esgotado.', 404);
+  return r;
+}
+/** Entra no grupo pelo link como o usuário da transação (app.user_id). */
+export async function joinByInvite(db: DB, token: string, claim?: string) {
+  const r = await db.query<{ g: string | null }>('SELECT fi_join_by_invite($1,$2) AS g', [hash(token), claim || null]);
+  if (!r.rows[0]?.g) throw new AppError('Convite inválido, expirado ou esgotado.', 404);
+  return r.rows[0].g;
 }
 
 const expenseSchema = z.object({
@@ -182,10 +238,12 @@ const expenseSchema = z.object({
 });
 
 async function writeExpense(db: DB, user: string, v: z.infer<typeof expenseSchema>, existing?: Expense) {
-  const group = (await db.query<{ status: string }>('SELECT status FROM share_groups WHERE id=$1', [v.group_id])).rows[0];
-  if (!group) throw new AppError('Grupo não encontrado.', 404);
-  if (group.status !== 'active') throw new AppError('Grupo encerrado: não aceita novos lançamentos.', 409);
+  await activeGroup(db, v.group_id);
   const me = await myMember(db, user, v.group_id);
+  if (!existing) {
+    const today = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM shared_expenses WHERE created_by=$1 AND created_at>now()-interval '1 day'", [user]);
+    if (today.rows[0].n >= 300) throw new AppError('Limite de 300 despesas por dia atingido.', 429);
+  }
   const members = (await db.query<{ id: string }>('SELECT id FROM share_members WHERE group_id=$1 AND removed_at IS NULL ORDER BY created_at', [v.group_id])).rows.map((m) => m.id);
   if (!members.includes(v.payer_member_id)) throw new AppError('Quem pagou precisa ser membro do grupo.');
   if (v.date > localToday()) throw new AppError('A data não pode ser futura.');
@@ -240,22 +298,31 @@ export async function sharedAction(db: DB, user: string, action: string, payload
     return { id: v.id };
   }
   if (action === 'group.create') {
-    const v = z.object({ name: z.string().trim().min(1).max(80), kind: z.enum(['home', 'trip', 'event', 'other']).default('home'), member_user_ids: z.array(id).min(1).max(30) }).parse(payload);
+    const v = z.object({
+      name: z.string().trim().min(1).max(80), kind: z.enum(['home', 'trip', 'event', 'other']).default('home'),
+      member_user_ids: z.array(id).max(30).default([]), guest_names: z.array(z.string().trim().min(1).max(80)).max(30).default([]),
+      starts_on: z.union([date, z.literal('')]).default(''), ends_on: z.union([date, z.literal('')]).default(''),
+    }).parse(payload);
+    if (v.starts_on && v.ends_on && v.ends_on < v.starts_on) throw new AppError('O fim do período precisa ser depois do início.');
     for (const other of v.member_user_ids) if (!(await connected(db, user, other))) throw new AppError('Só é possível incluir pessoas conectadas a você.', 403);
+    const owned = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM share_groups WHERE created_by=$1 AND status<>'archived'", [user]);
+    const maxGroups = (await userPlan(db, user)) === 'full' ? 50 : 10;
+    if (owned.rows[0].n >= maxGroups) throw new AppError(`Limite de ${maxGroups} grupos ativos atingido. Arquive grupos encerrados.`, 429);
     const key = randomUUID();
-    await db.query('INSERT INTO share_groups(id,name,kind,created_by) VALUES($1,$2,$3,$4)', [key, v.name, v.kind, user]);
+    await db.query('INSERT INTO share_groups(id,name,kind,created_by,starts_on,ends_on) VALUES($1,$2,$3,$4,$5,$6)', [key, v.name, v.kind, user, v.starts_on || null, v.ends_on || null]);
     const names = new Map((await db.query<{ id: string; name: string }>('SELECT id,name FROM users WHERE id = ANY($1::uuid[])', [[user, ...v.member_user_ids]])).rows.map((u) => [u.id, u.name]));
     await db.query("INSERT INTO share_members(id,group_id,user_id,display_name,role) VALUES($1,$2,$3,$4,'owner')", [randomUUID(), key, user, names.get(user) || 'Eu']);
     for (const other of [...new Set(v.member_user_ids)].filter((x) => x !== user))
       await db.query("INSERT INTO share_members(id,group_id,user_id,display_name) VALUES($1,$2,$3,$4)", [randomUUID(), key, other, names.get(other) || 'Membro']);
-    await audit(db, user, action, key, { members: v.member_user_ids.length + 1 });
+    for (const guest of v.guest_names) await db.query('INSERT INTO share_members(id,group_id,display_name) VALUES($1,$2,$3)', [randomUUID(), key, guest]);
+    await audit(db, user, action, key, { members: v.member_user_ids.length + 1, guests: v.guest_names.length });
     return { id: key };
   }
   if (action === 'group.settings') {
-    const v = z.object({ group_id: id, auto_post: z.boolean(), auto_account_id: z.union([id, z.literal('')]).default('') }).parse(payload);
+    const v = z.object({ group_id: id, auto_post: z.boolean(), auto_account_id: z.union([id, z.literal('')]).default(''), skip_ledger: z.boolean().optional() }).parse(payload);
     const me = await myMember(db, user, v.group_id);
     if (v.auto_account_id && !(await db.query("SELECT 1 FROM accounts WHERE id=$1 AND user_id=$2 AND type<>'receivable'", [v.auto_account_id, user])).rows.length) throw new AppError('Conta não encontrada.', 404);
-    await db.query('UPDATE share_members SET auto_post=$1,auto_account_id=$2 WHERE id=$3', [v.auto_post, v.auto_account_id || null, me.id]);
+    await db.query('UPDATE share_members SET auto_post=$1,auto_account_id=$2,skip_ledger=$3 WHERE id=$4', [v.auto_post, v.auto_account_id || null, v.skip_ledger ?? me.skip_ledger, me.id]);
     return { id: v.group_id };
   }
   if (action === 'group.leave') {
@@ -271,6 +338,7 @@ export async function sharedAction(db: DB, user: string, action: string, payload
     const e = (await db.query<Expense>('SELECT id,group_id,created_by,payer_member_id,description,total::text,date::text,category,split_mode,version,deleted_at FROM shared_expenses WHERE id=$1 AND deleted_at IS NULL', [v.id])).rows[0];
     if (!e) throw new AppError('Despesa não encontrada.', 404);
     if (e.created_by !== user) throw new AppError('Só quem lançou pode alterar esta despesa.', 403);
+    await activeGroup(db, e.group_id);
     if (action === 'shared.update') return writeExpense(db, user, expenseSchema.parse({ ...(payload as object), group_id: e.group_id }), e);
     await db.query('UPDATE shared_expenses SET deleted_at=now(),version=version+1,updated_at=now() WHERE id=$1', [e.id]);
     await audit(db, user, action, e.id);
@@ -285,27 +353,54 @@ export async function sharedAction(db: DB, user: string, action: string, payload
     return { id: e.id };
   }
   if (action === 'settle.pay') {
-    // Quem deve marca o pagamento: quita no PRÓPRIO ledger as partes em aberto devidas a esse membro.
-    const v = z.object({ group_id: id, to_member_id: id, account_id: id, date }).parse(payload);
+    // Quem deve marca o pagamento. Conta completa: quita no PRÓPRIO ledger as partes em aberto
+    // devidas a esse membro. Sem lançamentos (só divisão ou partes não lançadas): informa o valor.
+    const v = z.object({ group_id: id, to_member_id: id, account_id: id.optional(), amount: money.optional(), date }).parse(payload);
     const me = await myMember(db, user, v.group_id);
     if (v.to_member_id === me.id) throw new AppError('Escolha outra pessoa.');
     if (v.date > localToday()) throw new AppError('A data não pode ser futura.');
-    const open = (await db.query<{ obligation_id: string; amount: string; description: string; category: string; due: string }>(
+    const to = (await db.query<Member>('SELECT * FROM share_members WHERE id=$1 AND group_id=$2 AND removed_at IS NULL', [v.to_member_id, v.group_id])).rows[0];
+    if (!to) throw new AppError('Pessoa não encontrada no grupo.', 404);
+    const open = (await usesLedger(db, user, me)) ? (await db.query<{ obligation_id: string; amount: string; description: string; category: string; due: string }>(
       `SELECT p.obligation_id, o.amount::text, o.description, o.category, o.due_date::text AS due FROM shared_postings p
        JOIN shared_expenses e ON e.id=p.expense_id JOIN obligations o ON o.id=p.obligation_id AND o.user_id=$1
-       WHERE p.user_id=$1 AND p.role='participant' AND o.status='open' AND e.group_id=$2 AND e.payer_member_id=$3`, [user, v.group_id, v.to_member_id])).rows;
-    if (!open.length) throw new AppError('Nada em aberto para essa pessoa. Lance antes as partes pendentes em "Para lançar".');
+       WHERE p.user_id=$1 AND p.role='participant' AND o.status='open' AND e.group_id=$2 AND e.payer_member_id=$3`, [user, v.group_id, v.to_member_id])).rows : [];
     let total = 0n;
-    for (const o of open) {
-      const tx = await insertMovement(db, user, { account_id: v.account_id, kind: 'expense', amount: o.amount, date: v.date, competence: o.due, description: o.description, category: o.category }, { source: 'shared' });
-      await db.query("UPDATE obligations SET status='paid',settled_transaction_id=$1 WHERE id=$2 AND user_id=$3", [tx, o.obligation_id, user]);
-      total += cents(o.amount);
-    }
+    if (open.length) {
+      if (!v.account_id) throw new AppError('Escolha a conta de onde saiu o pagamento.');
+      for (const o of open) {
+        const tx = await insertMovement(db, user, { account_id: v.account_id, kind: 'expense', amount: o.amount, date: v.date, competence: o.due, description: o.description, category: o.category }, { source: 'shared' });
+        await db.query("UPDATE obligations SET status='paid',settled_transaction_id=$1 WHERE id=$2 AND user_id=$3", [tx, o.obligation_id, user]);
+        total += cents(o.amount);
+      }
+    } else if (v.amount) total = cents(v.amount);
+    else throw new AppError('Informe o valor pago (ou lance antes as partes pendentes em "Para lançar").');
+    // Quem recebe sem conta no app não tem como confirmar: o acerto já nasce confirmado.
+    const status = to.user_id ? 'pending' : 'confirmed';
     const key = randomUUID();
-    await db.query('INSERT INTO shared_settlements(id,group_id,from_member_id,to_member_id,amount,date,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)', [key, v.group_id, me.id, v.to_member_id, decimal(total), v.date, user]);
+    await db.query('INSERT INTO shared_settlements(id,group_id,from_member_id,to_member_id,amount,date,created_by,status,confirmed_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+      [key, v.group_id, me.id, v.to_member_id, decimal(total), v.date, user, status, status === 'confirmed' ? new Date().toISOString() : null]);
     await db.query("INSERT INTO shared_postings(id,user_id,settlement_id,role) VALUES($1,$2,$3,'settle_paid')", [randomUUID(), user, key]);
     await audit(db, user, action, key, { amount: decimal(total), parts: open.length });
     return { id: key, amount: decimal(total) };
+  }
+  if (action === 'settle.receive') {
+    // Recebi de alguém sem conta no app: registro direto, já confirmado.
+    const v = z.object({ group_id: id, from_member_id: id, amount: money, date, account_id: id.optional() }).parse(payload);
+    const me = await myMember(db, user, v.group_id);
+    const from = (await db.query<Member>('SELECT * FROM share_members WHERE id=$1 AND group_id=$2', [v.from_member_id, v.group_id])).rows[0];
+    if (!from || from.id === me.id) throw new AppError('Pessoa não encontrada no grupo.', 404);
+    if (from.user_id) throw new AppError('Essa pessoa tem conta: ela registra o pagamento e você confirma.');
+    if (v.date > localToday()) throw new AppError('A data não pode ser futura.');
+    const ledger = await usesLedger(db, user, me);
+    if (ledger && !v.account_id) throw new AppError('Escolha a conta onde o dinheiro entrou.');
+    const key = randomUUID();
+    await db.query("INSERT INTO shared_settlements(id,group_id,from_member_id,to_member_id,amount,date,created_by,status,confirmed_at) VALUES($1,$2,$3,$4,$5,$6,$7,'confirmed',now())",
+      [key, v.group_id, from.id, me.id, v.amount, v.date, user]);
+    const transfer = ledger ? await insertMovement(db, user, { account_id: await receivableAccount(db, user), destination_account_id: v.account_id!, kind: 'transfer', amount: v.amount, date: v.date, competence: v.date, description: 'Reembolso de despesa compartilhada', category: 'Transferência interna' }, { source: 'shared' }) : null;
+    await db.query("INSERT INTO shared_postings(id,user_id,settlement_id,role,transfer_id) VALUES($1,$2,$3,'settle_received',$4)", [randomUUID(), user, key, transfer]);
+    await audit(db, user, action, key, { amount: v.amount });
+    return { id: key };
   }
   if (action === 'settle.confirm' || action === 'settle.reject') {
     // Quem recebeu confirma: baixa o "a receber" no próprio ledger (transferência, não receita).
@@ -319,13 +414,93 @@ export async function sharedAction(db: DB, user: string, action: string, payload
       await audit(db, user, action, s.id);
       return { id: s.id };
     }
-    if (!v.account_id) throw new AppError('Escolha a conta onde o dinheiro entrou.');
-    const rec = await receivableAccount(db, user);
-    const transfer = await insertMovement(db, user, { account_id: rec, destination_account_id: v.account_id, kind: 'transfer', amount: s.amount, date: s.date, competence: s.date, description: 'Reembolso de despesa compartilhada', category: 'Transferência interna' }, { source: 'shared' });
+    const ledger = await usesLedger(db, user, me);
+    if (ledger && !v.account_id) throw new AppError('Escolha a conta onde o dinheiro entrou.');
+    const transfer = ledger ? await insertMovement(db, user, { account_id: await receivableAccount(db, user), destination_account_id: v.account_id!, kind: 'transfer', amount: s.amount, date: s.date, competence: s.date, description: 'Reembolso de despesa compartilhada', category: 'Transferência interna' }, { source: 'shared' }) : null;
     await db.query("UPDATE shared_settlements SET status='confirmed',confirmed_at=now() WHERE id=$1", [s.id]);
     await db.query("INSERT INTO shared_postings(id,user_id,settlement_id,role,transfer_id) VALUES($1,$2,$3,'settle_received',$4)", [randomUUID(), user, s.id, transfer]);
     await audit(db, user, action, s.id, { amount: s.amount });
     return { id: s.id };
+  }
+  if (action === 'shared.skip') {
+    // "Não lançar": marca a parte como tratada sem mexer no financeiro.
+    const v = z.object({ expense_id: id }).parse(payload);
+    const e = (await db.query<Expense>('SELECT id,group_id,payer_member_id,version FROM shared_expenses WHERE id=$1 AND deleted_at IS NULL', [v.expense_id])).rows[0];
+    if (!e) throw new AppError('Despesa não encontrada.', 404);
+    const me = await myMember(db, user, e.group_id);
+    const role = e.payer_member_id === me.id ? 'payer' : 'participant';
+    await db.query('INSERT INTO shared_postings(id,user_id,expense_id,role,version) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING', [randomUUID(), user, e.id, role, e.version]);
+    return { id: e.id };
+  }
+  if (action === 'group.update') {
+    const v = z.object({ group_id: id, name: z.string().trim().min(1).max(80), starts_on: z.union([date, z.literal('')]).default(''), ends_on: z.union([date, z.literal('')]).default('') }).parse(payload);
+    await ownerOf(db, user, v.group_id);
+    if (v.starts_on && v.ends_on && v.ends_on < v.starts_on) throw new AppError('O fim do período precisa ser depois do início.');
+    await db.query('UPDATE share_groups SET name=$1,starts_on=$2,ends_on=$3 WHERE id=$4', [v.name, v.starts_on || null, v.ends_on || null, v.group_id]);
+    await audit(db, user, action, v.group_id);
+    return { id: v.group_id };
+  }
+  if (action === 'group.close' || action === 'group.reopen' || action === 'group.archive') {
+    const v = z.object({ group_id: id }).parse(payload);
+    await ownerOf(db, user, v.group_id);
+    const [from, to] = action === 'group.close' ? ['active', 'closed'] : action === 'group.reopen' ? ['closed', 'active'] : ['closed', 'archived'];
+    const r = await db.query(`UPDATE share_groups SET status=$1, closed_at=${to === 'active' ? 'NULL' : 'coalesce(closed_at, now())'} WHERE id=$2 AND status=$3 RETURNING id`, [to, v.group_id, from]);
+    if (!r.rows.length) throw new AppError(action === 'group.archive' ? 'Encerre o grupo antes de arquivar.' : 'O grupo não está nesse estado.', 409);
+    if (to !== 'active') await db.query('UPDATE share_invites SET revoked_at=now() WHERE group_id=$1 AND revoked_at IS NULL', [v.group_id]);
+    await audit(db, user, action, v.group_id);
+    return { id: v.group_id };
+  }
+  if (action === 'group.add_guest') {
+    const v = z.object({ group_id: id, name: z.string().trim().min(1).max(80) }).parse(payload);
+    await activeGroup(db, v.group_id);
+    await myMember(db, user, v.group_id);
+    const n = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM share_members WHERE group_id=$1 AND removed_at IS NULL', [v.group_id]);
+    if (n.rows[0].n >= 50) throw new AppError('O grupo já tem 50 pessoas.', 429);
+    const key = randomUUID();
+    await db.query('INSERT INTO share_members(id,group_id,display_name) VALUES($1,$2,$3)', [key, v.group_id, v.name]);
+    await audit(db, user, action, v.group_id);
+    return { id: key };
+  }
+  if (action === 'group.remove_guest') {
+    const v = z.object({ group_id: id, member_id: id }).parse(payload);
+    await ownerOf(db, user, v.group_id);
+    const m = (await db.query<Member>('SELECT * FROM share_members WHERE id=$1 AND group_id=$2 AND user_id IS NULL AND removed_at IS NULL', [v.member_id, v.group_id])).rows[0];
+    if (!m) throw new AppError('Pessoa sem conta não encontrada.', 404);
+    const used = await db.query(`SELECT 1 FROM shared_shares s JOIN shared_expenses e ON e.id=s.expense_id WHERE s.member_id=$1 AND e.deleted_at IS NULL AND s.amount>0
+      UNION ALL SELECT 1 FROM shared_expenses WHERE payer_member_id=$1 AND deleted_at IS NULL UNION ALL SELECT 1 FROM shared_settlements WHERE (from_member_id=$1 OR to_member_id=$1) AND status<>'rejected' LIMIT 1`, [m.id]);
+    if (used.rows.length) throw new AppError('Essa pessoa já tem despesas ou acertos no grupo.', 409);
+    await db.query('UPDATE share_members SET removed_at=now() WHERE id=$1', [m.id]);
+    await audit(db, user, action, v.group_id);
+    return { id: m.id };
+  }
+  if (action === 'invite.create') {
+    const v = z.object({ group_id: id, days: z.union([z.literal(1), z.literal(7), z.literal(30)]).default(7), max_uses: z.number().int().min(1).max(50).default(10) }).parse(payload);
+    await activeGroup(db, v.group_id);
+    await ownerOf(db, user, v.group_id);
+    const recent = await db.query<{ n: number }>("SELECT count(*)::int AS n FROM share_invites WHERE created_by=$1 AND created_at>now()-interval '1 day'", [user]);
+    if (recent.rows[0].n >= 20) throw new AppError('Limite de 20 links por dia atingido.', 429);
+    const live = await db.query<{ n: number }>('SELECT count(*)::int AS n FROM share_invites WHERE group_id=$1 AND revoked_at IS NULL AND expires_at>now() AND uses<max_uses', [v.group_id]);
+    if (live.rows[0].n >= 5) throw new AppError('Este grupo já tem 5 links ativos. Revogue um antes.', 429);
+    const token = randomBytes(24).toString('base64url');
+    const r = await db.query<{ expires_at: string }>(`INSERT INTO share_invites(id,group_id,token_hash,created_by,expires_at,max_uses) VALUES($1,$2,$3,$4,now()+make_interval(days => $5),$6) RETURNING expires_at::text`,
+      [randomUUID(), v.group_id, hash(token), user, v.days, v.max_uses]);
+    await audit(db, user, action, v.group_id, { days: v.days, max_uses: v.max_uses });
+    return { id: v.group_id, token, expires_at: r.rows[0].expires_at };
+  }
+  if (action === 'invite.revoke') {
+    const v = z.object({ id }).parse(payload);
+    const inv = (await db.query<{ group_id: string }>('SELECT group_id FROM share_invites WHERE id=$1 AND revoked_at IS NULL', [v.id])).rows[0];
+    if (!inv) throw new AppError('Link não encontrado.', 404);
+    await ownerOf(db, user, inv.group_id);
+    await db.query('UPDATE share_invites SET revoked_at=now() WHERE id=$1', [v.id]);
+    await audit(db, user, action, v.id);
+    return { id: v.id };
+  }
+  if (action === 'invite.join') {
+    const v = z.object({ token: inviteToken, claim_member_id: id.optional() }).parse(payload);
+    const group = await joinByInvite(db, v.token, v.claim_member_id);
+    await audit(db, user, action, group);
+    return { id: group };
   }
   if (action === 'shared.dismiss_notice') {
     const v = z.object({ expense_id: id }).parse(payload);

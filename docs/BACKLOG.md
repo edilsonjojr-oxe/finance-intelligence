@@ -63,13 +63,15 @@ próprio usuário (caixa "Para lançar" ou automático por grupo). RLS por membr
 ## 8. Grupos de divisão (Etapa 2)
 Decisões padrão: upgrade de "só divisão" para completa apenas por convite normal de usuário
 completo; membro sem conta (só nome) incluído, vinculável depois.
-- [ ] 8.1 Tipos/período/status; encerrar trava lançamentos
-- [ ] 8.2 Link de convite (hash, validade, usos, revogação, compartilhar)
-- [ ] 8.3 Conta split_only bloqueada no servidor fora do módulo; limites anti-abuso
-- [ ] 8.4 Membro sem conta
-- [ ] 8.5 Saldos, simplificar dívidas, acerto confirmado
-- [ ] 8.6 Materialização opcional para conta completa
-- [ ] 8.7 Feed de atividade e CSV de encerramento
+- [x] 8.1 Tipos/período/status; encerrar trava lançamentos
+- [x] 8.2 Link de convite (hash, validade, usos, revogação, compartilhar)
+- [x] 8.3 Conta split_only bloqueada no servidor fora do módulo; limites anti-abuso
+- [x] 8.4 Membro sem conta
+- [x] 8.5 Saldos, simplificar dívidas, acerto confirmado
+- [x] 8.6 Materialização opcional para conta completa
+- [x] 8.7 Feed de atividade e CSV de encerramento
+
+> Bloco 8 publicado em 2026-11-08 (migração 010). Testes: npm run test:split (7 cenários).
 
 ## 9. Testes e qualidade (contínuo)
 - [ ] 9.1 http-run com as novas funcionalidades

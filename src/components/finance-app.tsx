@@ -57,7 +57,7 @@ import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
 import LoansPage from "./loans-page";
 import ReportsPage from "./reports-page";
-import SharedPage from "./shared-page";
+import SharedPage, { JoinGroupCard, clearGroupInvite, fetchInvitePreview, readGroupInvite, type InvitePreview } from "./shared-page";
 import SheetImport from "./sheet-import";
 import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
@@ -340,14 +340,23 @@ function Login({
   needsSetup,
   requiresSetupToken,
   onDone,
+  groupInvite = "",
 }: {
   needsSetup: boolean;
   requiresSetupToken: boolean;
   onDone: () => Promise<void>;
+  groupInvite?: string;
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [registering, setRegistering] = useState(false);
+  const [invite, setInvite] = useState<InvitePreview | null>(null),
+    [inviteError, setInviteError] = useState("");
+  useEffect(() => {
+    if (groupInvite) fetchInvitePreview(groupInvite).then((p) => { setInvite(p); setRegistering(true); }).catch((e) => setInviteError(e.message));
+  }, [groupInvite]);
+  // Com link de grupo válido, "criar acesso" cria conta só para dividir (sem código de convite).
+  const splitSignup = registering && !!invite;
   const creating = needsSetup || registering;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -356,13 +365,16 @@ function Login({
     const form = new FormData(event.currentTarget);
     try {
       await request("/api/auth", {
-        action: needsSetup ? "setup" : registering ? "register" : "login",
+        action: needsSetup ? "setup" : splitSignup ? "split" : registering ? "register" : "login",
+        group_token: splitSignup ? groupInvite : undefined,
+        claim_member_id: splitSignup ? form.get("claim_member_id") || undefined : undefined,
         name: form.get("name") || undefined,
         email: form.get("email"),
         password: form.get("password"),
         setup_token: form.get("setup_token") || undefined,
         invite_code: form.get("invite_code") || undefined,
       });
+      if (splitSignup) clearGroupInvite();
       await onDone();
     } catch (e) {
       setError((e as Error).message);
@@ -424,9 +436,17 @@ function Login({
             {needsSetup
               ? "Crie seu acesso pessoal para organizar sua vida financeira."
               : registering
-                ? "Use o convite que você recebeu. Seus dados ficam separados dos de quem convidou."
+                ? splitSignup
+                  ? "Crie um acesso só para dividir despesas. Você pode virar conta completa depois, por convite."
+                  : "Use o convite que você recebeu. Seus dados ficam separados dos de quem convidou."
                 : "Entre para acompanhar suas contas e próximos compromissos."}
           </p>
+          {invite && (
+            <p className="login-invite">
+              <strong>{invite.inviter}</strong> convidou você para o grupo <strong>{invite.group_name}</strong>. Entre ou crie um acesso para participar.
+            </p>
+          )}
+          {inviteError && <p className="error">{inviteError}</p>}
           {!needsSetup && (
             <div className="auth-switch" role="tablist" aria-label="Tipo de acesso">
               <button
@@ -445,7 +465,7 @@ function Login({
                 className={registering ? "active" : ""}
                 onClick={() => { setRegistering(true); setError(""); }}
               >
-                Tenho um convite
+                {invite ? "Criar acesso" : "Tenho um convite"}
               </button>
             </div>
           )}
@@ -462,7 +482,15 @@ function Login({
               </Field>
             )}
             {needsSetup && requiresSetupToken && <Field label="Código de ativação"><input name="setup_token" type="password" autoComplete="off" required maxLength={200}/><small>Use o código privado configurado na instalação.</small></Field>}
-            {registering && !needsSetup && (
+            {splitSignup && invite.guests.length > 0 && (
+              <Field label="Você já está no grupo com outro nome?">
+                <select name="claim_member_id" defaultValue="">
+                  <option value="">Não</option>
+                  {invite.guests.map((g) => <option key={g.id} value={g.id}>Sou {g.name}</option>)}
+                </select>
+              </Field>
+            )}
+            {registering && !needsSetup && !splitSignup && (
               <Field label="Código de convite">
                 <input
                   name="invite_code"
@@ -527,8 +555,10 @@ export default function FinanceApp() {
   const [auth, setAuth] = useState<{
     needsSetup: boolean;
     requiresSetupToken: boolean;
-    user: { id: string; name: string; email: string } | null;
+    user: { id: string; name: string; email: string; plan?: string } | null;
   } | null>(null);
+  const [groupInvite, setGroupInvite] = useState("");
+  useEffect(() => setGroupInvite(readGroupInvite()), []);
   const [data, setData] = useState<FinanceState | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
@@ -553,6 +583,7 @@ export default function FinanceApp() {
   const load = useCallback(async () => {
     const session = await request<NonNullable<typeof auth>>("/api/auth");
     setAuth(session);
+    if (session.user?.plan === "split_only") setPage("shared");
     if (session.user) setData(await request<FinanceState>("/api/finance"));
     else setData(null);
   }, []);
@@ -730,7 +761,8 @@ export default function FinanceApp() {
         )}
       </div>
     );
-  if (!auth.user) return <Login needsSetup={auth.needsSetup} requiresSetupToken={auth.requiresSetupToken} onDone={load} />;
+  if (!auth.user) return <Login needsSetup={auth.needsSetup} requiresSetupToken={auth.requiresSetupToken} onDone={async () => { await load(); setGroupInvite(readGroupInvite()); }} groupInvite={groupInvite} />;
+  const splitOnly = auth.user.plan === "split_only";
   if (!data)
     return (
       <div className="loading">
@@ -945,7 +977,7 @@ export default function FinanceApp() {
         </div>
         <span className="nav-heading">SUA CENTRAL</span>
         <nav aria-label="Navegação principal">
-          {navigation.map(({ id, label, icon: Icon }) => (
+          {navigation.filter((n) => !splitOnly || n.id === "shared").map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               className={page === id ? "active" : ""}
@@ -967,19 +999,19 @@ export default function FinanceApp() {
             <strong>Clareza antes da decisão.</strong>
             <p>Uma base organizada é o primeiro passo para planejar melhor.</p>
           </div>
-          <button
+          {!splitOnly && <button
             className={`settings-link ${page === "settings" ? "active" : ""}`}
             onClick={() => navigate("settings")}
           >
             <Settings2 size={18} /> Configurações e histórico
-          </button>
+          </button>}
           <div className="profile">
             <span className="avatar">
               {auth.user.name.slice(0, 1).toUpperCase()}
             </span>
             <div>
               {auth.user.name}
-              <small>Conta pessoal</small>
+              <small>{splitOnly ? "Só divisão de despesas" : "Conta pessoal"}</small>
             </div>
             <button
               aria-label="Sair"
@@ -1020,20 +1052,21 @@ export default function FinanceApp() {
             <span className="private-status">
               <span /> Espaço privado
             </span>
-            <button
+            {!splitOnly && <button
               className="icon-button"
               aria-label="Ver compromissos pendentes"
               onClick={() => navigate("obligations")}
             >
               <Bell size={19} />
               {overdue.length > 0 && <i className="notification-dot" />}
-            </button>
+            </button>}
             <span className="avatar small">
               {auth.user.name.slice(0, 1).toUpperCase()}
             </span>
           </div>
         </header>
         <div className="page-content">
+          {groupInvite && <JoinGroupCard token={groupInvite} act={act} onDone={() => { setGroupInvite(""); navigate("shared"); }} />}
           <div className="page-heading">
             <div>
               <span className="eyebrow">

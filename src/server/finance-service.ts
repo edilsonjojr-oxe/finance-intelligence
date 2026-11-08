@@ -229,10 +229,13 @@ export async function financeAction(
   payload: unknown,
 ) {
   return transaction(user, async (db) => {
+    const sharedOnly=/^(connect|group|shared|settle|invite)\./.test(action);
+    // Conta "só divisão": o servidor recusa tudo fora do módulo Dividir (não só a tela).
+    if(!sharedOnly&&(await (await import('./shared')).userPlan(db,user))!=='full') throw new AppError('Sua conta é só para dividir despesas. Peça um convite completo a quem usa o app.',403);
+    if(sharedOnly) return (await import('./shared')).sharedAction(db,user,action,payload);
     if(action==='intake.confirm') return (await import('./intake')).confirmIntake(db,user,payload);
     if(['loan.create','sheet.import','obligation.mark_paid','obligation.reopen'].includes(action)) return (await import('./loans')).loanAction(db,user,action,payload);
     if(action.startsWith('budget.')||action.startsWith('goal.')) return (await import('./planning')).planningAction(db,user,action,payload);
-    if(/^(connect|group|shared|settle)\./.test(action)) return (await import('./shared')).sharedAction(db,user,action,payload);
     if(action==='import.discard') {
       const v=z.object({id}).parse(payload);
       const rows=await db.query("UPDATE import_batches SET status='discarded' WHERE user_id=$1 AND id=$2 AND status='review' RETURNING id",[user,v.id]);

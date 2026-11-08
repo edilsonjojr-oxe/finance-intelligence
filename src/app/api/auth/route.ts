@@ -3,6 +3,8 @@ import { z } from "zod";
 import { authenticate, authStatus, createInvite, logout, logoutEverywhere, requireUser, sessionCookie, SESSION_MAX_DAYS } from "@/server/auth";
 import { errorResponse, readBody } from "@/server/http";
 import { secureCookies } from "@/server/deployment-config";
+import { transaction } from "@/server/db";
+import { invitePreview, inviteToken } from "@/server/shared";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
@@ -34,26 +36,36 @@ export async function POST(request: NextRequest) {
       const user = await requireUser(request.cookies.get(sessionCookie)?.value);
       return NextResponse.json(await createInvite(user.id));
     }
+    if (body.action === "group_preview") {
+      // Prévia do link de grupo (sem sessão): só com token válido; o token não vai na URL do servidor.
+      const { token } = z.object({ token: inviteToken }).parse(body);
+      return NextResponse.json(await transaction(null, (db) => invitePreview(db, token)));
+    }
     const v = z
       .object({
-        action: z.enum(["login", "setup", "register"]),
+        action: z.enum(["login", "setup", "register", "split"]),
         email: z.string().trim().toLowerCase().email().max(254),
         password: z.string().min(12).max(128),
         name: z.string().trim().max(100).optional(),
         setup_token: z.string().max(200).optional(),
         invite_code: z.string().max(40).optional(),
+        group_token: inviteToken.optional(),
+        claim_member_id: z.string().uuid().optional(),
       })
       .parse(body);
     if (v.action !== "login" && !v.name)
       return NextResponse.json({ error: "Informe seu nome." }, { status: 400 });
     if (v.action === "register" && !v.invite_code)
       return NextResponse.json({ error: "Informe o código de convite." }, { status: 400 });
+    if (v.action === "split" && !v.group_token)
+      return NextResponse.json({ error: "Abra o link de convite do grupo." }, { status: 400 });
     const token = await authenticate(
       v.action,
       v.email,
       v.password,
       v.name,
-      v.action === "register" ? v.invite_code : v.setup_token,
+      v.action === "register" ? v.invite_code : v.action === "split" ? v.group_token : v.setup_token,
+      v.claim_member_id,
     );
     const response = NextResponse.json({ ok: true });
     response.cookies.set(sessionCookie, token, {
