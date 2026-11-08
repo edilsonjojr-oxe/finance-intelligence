@@ -30,10 +30,10 @@ Legenda: [x] feito · [ ] pendente · [-] fora do escopo por decisão do usuári
 - [x] 3.4 Conferência total lido × lançamentos (na leitura da fatura)
 
 ## 4. Nota de mercado (Fase C)
-- [ ] 4.1 Ler cupom (foto/PDF/texto) em itens
-- [ ] 4.2 Categoria por produto + memória
-- [ ] 4.3 Vincular à compra e dividir automaticamente (descontos rateados, soma = total)
-- [ ] 4.4 Avaliar chave/QR NFC-e SEFAZ-RS
+- [x] 4.1 Ler cupom (foto/PDF/texto) em itens
+- [x] 4.2 Categoria por produto + memória
+- [x] 4.3 Vincular à compra e dividir automaticamente (descontos rateados, soma = total)
+- [-] 4.4 Chave/QR NFC-e SEFAZ-RS — adiado: precisa de uma nota real para validar a consulta
 
 ## 5. Orçamentos e metas (Fase E)
 - [ ] 5.1 Limite mensal por grupo/subcategoria com alerta

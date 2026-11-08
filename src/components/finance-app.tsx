@@ -55,6 +55,7 @@ import CategoryPanel from "./category-panel";
 import MovementCategoryEditor from "./movement-category";
 import LoansPage from "./loans-page";
 import SheetImport from "./sheet-import";
+import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
 import { categoryList, DIVIDED } from "@/lib/categorize";
 import { obligationStage } from "@/lib/intake";
@@ -1706,6 +1707,7 @@ export default function FinanceApp() {
           {page === "imports" && (
             <>
               <SourceIntake data={data} act={act}/>
+              <ReceiptImport data={data} act={act}/>
               <SheetImport data={data} act={act}/>
               <div className="import-grid">
                 <section className="panel import-panel">
