@@ -27,8 +27,8 @@
     "test:advisor": "tsx tests/advisor.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.6.0",
     "@electric-sql/pglite": "^0.5.15",
+    "@google/genai": "^3.0.0",
     "@tesseract.js-data/por": "^1.0.0",
     "csv-parse": "^7.0.3",
     "lucide-react": "^1.69.0",

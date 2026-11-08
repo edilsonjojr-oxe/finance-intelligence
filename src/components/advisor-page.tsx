@@ -82,7 +82,7 @@ export default function AdvisorPage() {
       <ul className="advisor-facts">
         <li><Calculator size={16} /> Todo número vem dos cálculos do próprio app; você pode ver quais foram usados em cada resposta.</li>
         <li><ShieldCheck size={16} /> Ele só lê. Nada é gravado ou alterado sem você fazer na tela correspondente.</li>
-        <li><ShieldCheck size={16} /> Para responder, a pergunta e o resultado dos cálculos (saldos, lançamentos, compromissos) são enviados ao serviço de IA da Anthropic (Claude). E-mail, senha e documentos nunca são enviados, e a conversa não fica guardada no app.</li>
+        <li><ShieldCheck size={16} /> Para responder, a pergunta e o resultado dos cálculos (saldos, descrições de lançamentos, compromissos) são enviados ao Google Gemini. <strong>No plano gratuito, o Google pode usar esse conteúdo para melhorar os produtos dele.</strong> E-mail, senha e documentos nunca são enviados, e a conversa não fica guardada no app.</li>
         <li><Sparkles size={16} /> Orienta sobre organização do dinheiro. Não recomenda investimentos.</li>
       </ul>
       {!status.configured && <p className="form-help">O serviço ainda não foi configurado no servidor. Você pode ativar agora; as respostas começam assim que a chave for cadastrada.</p>}

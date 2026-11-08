@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenAI, type Content, type GenerateContentConfig, type GenerateContentResponse } from "@google/genai";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { AppError } from "./auth";
@@ -13,10 +13,12 @@ import type { FinanceState, Obligation } from "../lib/types";
 /**
  * Consultor IA. O modelo NUNCA calcula valores: cada número vem de uma ferramenta que roda aqui,
  * com as mesmas funções do app (saldo, categorias, projeção). Somente leitura: nada é gravado.
- * O que vai ao provedor: a pergunta, o histórico curto da conversa e o resultado das ferramentas
+ * O que vai ao provedor (Google Gemini): a pergunta, o histórico curto da conversa e o resultado das ferramentas
  * chamadas (contas, lançamentos, compromissos resumidos). Nunca e-mail, senha ou documentos.
  */
-export const ADVISOR_MODEL = "claude-opus-5-5";
+// Gemini no plano gratuito (escolha do usuário). Atenção: no plano gratuito o Google pode usar o
+// conteúdo enviado para melhorar os produtos dele; a tela de ativação avisa isso.
+export const ADVISOR_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 export const DAILY_QUESTIONS = 40;
 const MAX_STEPS = 8;
 
@@ -38,7 +40,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const moneyIn = z.string().regex(/^\d{1,12}([.,]\d{1,2})?$/);
 const clean = (v: string) => (v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v);
 
-export const advisorTools: Anthropic.Tool[] = [
+export const advisorTools: { name: string; description: string; input_schema: Record<string, unknown> }[] = [
   {
     name: "resumo_atual",
     description: "Panorama de hoje: data, saldo de cada conta, cartões (fatura, limite), receitas e despesas realizadas no mês, compromissos em aberto/atrasados dos próximos 30 dias, orçamentos e metas.",
@@ -267,7 +269,7 @@ function runTool(name: string, raw: unknown, data: FinanceState): { result: unkn
   }
 }
 
-export const advisorConfigured = () => !!process.env.ANTHROPIC_API_KEY;
+export const advisorConfigured = () => !!process.env.GEMINI_API_KEY;
 
 /** Liga/desliga o consultor para o usuário (consentimento explícito para enviar dados ao provedor de IA). */
 export async function setAdvisorConsent(user: string, on: boolean) {
@@ -289,13 +291,14 @@ export const advisorInput = z.object({
   history: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().max(6000) })).max(12).default([]),
 });
 
-let client: Anthropic | null = null;
-export async function askAdvisor(user: string, payload: unknown, runner?: (params: Anthropic.Beta.MessageCreateParamsNonStreaming) => Promise<Anthropic.Beta.BetaMessage>) {
+export type AdvisorRunner = (params: { model: string; contents: Content[]; config: GenerateContentConfig }) => Promise<Pick<GenerateContentResponse, "candidates" | "functionCalls" | "text" | "usageMetadata" | "promptFeedback">>;
+let client: GoogleGenAI | null = null;
+export async function askAdvisor(user: string, payload: unknown, runner?: AdvisorRunner) {
   const v = advisorInput.parse(payload);
   const status = await advisorStatus(user);
   if (status.plan !== "full") throw new AppError("O consultor é só para contas completas.", 403);
   if (!status.enabled) throw new AppError("Ative o consultor para continuar.", 403);
-  if (!runner && !status.configured) throw new AppError("O consultor ainda não foi configurado (falta a chave da Anthropic no servidor).", 503);
+  if (!runner && !status.configured) throw new AppError("O consultor ainda não foi configurado (falta a chave do Gemini no servidor).", 503);
   // Reserva a pergunta antes de chamar o provedor (o limite vale mesmo se a chamada falhar no meio).
   await transaction(user, async (db) => {
     const r = await db.query<{ questions: number }>(
@@ -306,50 +309,50 @@ export async function askAdvisor(user: string, payload: unknown, runner?: (param
     if (r.rows[0].questions > DAILY_QUESTIONS) throw new AppError(`Limite de ${DAILY_QUESTIONS} perguntas por dia atingido. Volte amanhã.`, 429);
   });
   const data = await getFinance(user);
-  const call = runner || (async (params) => {
-    client ??= new Anthropic();
-    return client.beta.messages.create(params);
+  const call: AdvisorRunner = runner || ((params) => {
+    client ??= new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    return client.models.generateContent(params);
   });
+  const config: GenerateContentConfig = {
+    systemInstruction: SYSTEM,
+    tools: [{ functionDeclarations: advisorTools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: t.input_schema })) }],
+    // O laço é nosso: cada ferramenta roda aqui, com validação, e fica registrada em "Cálculos usados".
+    automaticFunctionCalling: { disable: true },
+    maxOutputTokens: 8192,
+  };
   // Histórico só com texto (sem resultados de ferramentas antigos): cada pergunta busca dados novos.
-  const messages: Anthropic.Beta.BetaMessageParam[] = [
-    ...v.history.map((h) => ({ role: h.role, content: h.text })),
-    { role: "user", content: v.question },
+  const contents: Content[] = [
+    ...v.history.map((h) => ({ role: h.role === "assistant" ? "model" : "user", parts: [{ text: h.text }] })),
+    { role: "user", parts: [{ text: v.question }] },
   ];
-  if (messages[0].role !== "user") messages.shift();
+  if (contents[0].role !== "user") contents.shift();
   const steps: Step[] = [];
   let input = 0, output = 0, answer = "";
   for (let i = 0; i < MAX_STEPS; i++) {
-    const response = await call({
-      model: ADVISOR_MODEL,
-      max_tokens: 16000,
-      system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
-      tools: advisorTools,
-      output_config: { effort: "medium" },
-      // Recusa por política: a API repete a pergunta num modelo de reserva automaticamente.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      messages,
-    });
-    input += (response.usage.input_tokens || 0) + (response.usage.cache_read_input_tokens || 0) + (response.usage.cache_creation_input_tokens || 0);
-    output += response.usage.output_tokens || 0;
-    if (response.stop_reason === "refusal") { answer = "Não consigo ajudar com essa pergunta. Tente reformular focando nas suas finanças registradas no app."; break; }
-    const text = response.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text").map((b) => b.text).join("\n").trim();
-    if (response.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: response.content }); continue; }
-    if (response.stop_reason !== "tool_use") { answer = text || "Não consegui montar uma resposta. Tente perguntar de outro jeito."; break; }
-    messages.push({ role: "assistant", content: response.content });
-    const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
-    for (const block of response.content) {
-      if (block.type !== "tool_use") continue;
+    const response = await call({ model: ADVISOR_MODEL, contents, config });
+    input += response.usageMetadata?.promptTokenCount || 0;
+    output += (response.usageMetadata?.candidatesTokenCount || 0) + (response.usageMetadata?.thoughtsTokenCount || 0);
+    if (response.promptFeedback?.blockReason || !response.candidates?.length) {
+      answer = "Não consigo ajudar com essa pergunta. Tente reformular focando nas suas finanças registradas no app.";
+      break;
+    }
+    const calls = response.functionCalls || [];
+    const text = (response.text || "").trim();
+    if (!calls.length) { answer = text || "Não consegui montar uma resposta. Tente perguntar de outro jeito."; break; }
+    // Devolve o conteúdo do modelo como veio (inclui assinaturas de raciocínio exigidas pelo Gemini).
+    const modelContent = response.candidates[0].content;
+    contents.push(modelContent && modelContent.parts?.length ? { role: "model", parts: modelContent.parts } : { role: "model", parts: calls.map((c) => ({ functionCall: c })) });
+    const parts = calls.map((c) => {
       try {
-        const { result, summary } = runTool(block.name, block.input, data);
-        steps.push({ tool: block.name, input: block.input, summary });
-        results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+        const { result, summary } = runTool(c.name || "", c.args || {}, data);
+        steps.push({ tool: c.name || "", input: c.args, summary });
+        return { functionResponse: { id: c.id, name: c.name, response: { result } } };
       } catch (e) {
         const message = e instanceof z.ZodError ? "Parâmetros inválidos para esta ferramenta." : (e as Error).message;
-        results.push({ type: "tool_result", tool_use_id: block.id, content: message, is_error: true });
+        return { functionResponse: { id: c.id, name: c.name, response: { error: message } } };
       }
-    }
-    messages.push({ role: "user", content: results });
+    });
+    contents.push({ role: "user", parts });
     if (i === MAX_STEPS - 1) answer = text || "A pergunta exigiu cálculos demais. Tente dividir em partes menores.";
   }
   await transaction(user, (db) =>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { ApiError } from "@google/genai";
 import { z } from "zod";
 import { AppError, requireUser, sessionCookie } from "@/server/auth";
 import { advisorStatus, askAdvisor, setAdvisorConsent } from "@/server/advisor";
@@ -29,13 +29,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(await askAdvisor(user.id, body.payload));
     } catch (error) {
       // Erros do provedor: mensagem clara, sem detalhes internos.
-      if (error instanceof Anthropic.RateLimitError) throw new AppError("O consultor está muito ocupado agora. Tente em um minuto.", 429);
-      if (error instanceof Anthropic.AuthenticationError) throw new AppError("A chave do consultor no servidor é inválida.", 503);
-      if (error instanceof Anthropic.APIConnectionError) throw new AppError("Não foi possível falar com o serviço de IA. Tente de novo.", 502);
-      if (error instanceof Anthropic.APIError) {
+      if (error instanceof ApiError) {
+        if (error.status === 429) throw new AppError("Limite gratuito do Gemini atingido por agora. Tente de novo em alguns minutos (ou amanhã).", 429);
+        if (error.status === 401 || error.status === 403) throw new AppError("A chave do Gemini no servidor é inválida ou sem permissão.", 503);
         console.error("Consultor IA:", error.status, error.message.slice(0, 300));
         throw new AppError("O serviço de IA recusou a pergunta agora. Tente de novo.", 502);
       }
+      if (error instanceof TypeError && /fetch/i.test(error.message)) throw new AppError("Não foi possível falar com o serviço de IA. Tente de novo.", 502);
       throw error;
     }
   } catch (error) {

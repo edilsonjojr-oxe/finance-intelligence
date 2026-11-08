@@ -89,9 +89,9 @@ completo; membro sem conta (só nome) incluído, vinculável depois.
 
 ## 11. Próximas (decisão do usuário em 2026-11-08)
 - [x] 11.1 Recuperar senha por e-mail (link de uso único, expira em 30 min, encerra sessões)
-- [x] 11.2 Consultor IA: perguntas e simulações sobre os dados, cálculos feitos pelo app, nada gravado sem confirmação
+- [x] 11.2 Consultor IA (Google Gemini, plano gratuito — escolha do usuário): perguntas e simulações sobre os dados, cálculos feitos pelo app, nada gravado sem confirmação
 - [-] Gmail (faturas por e-mail) — não será feito, decisão do usuário
 - [-] Consulta NFC-e SEFAZ-RS — não será feito, decisão do usuário
 
 > Bloco 11 pronto em 2026-11-08: migração 011 (aguardando aplicação no Supabase). Testes: npm run test:reset, npm run test:advisor.
-> Configurar na Vercel: ANTHROPIC_API_KEY (consultor) e SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (e-mail).
+> Configurar na Vercel: GEMINI_API_KEY (consultor, Google Gemini plano gratuito; opcional GEMINI_MODEL) e SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM (e-mail).
