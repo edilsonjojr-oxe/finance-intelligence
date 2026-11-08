@@ -61,6 +61,7 @@ import ReceiptImport from "./receipt-import";
 import { CardFields, accountLabel, accountTypeLabel } from "./card-fields";
 import { categoryList, DIVIDED } from "@/lib/categorize";
 import CategorySelect, { CategoryOptions } from "./category-select";
+import CountUp from "./count-up";
 import { obligationStage } from "@/lib/intake";
 
 type Page =
@@ -263,8 +264,8 @@ function CashChart({ points }: { points: ForecastPoint[] }) {
       >
         <defs>
           <linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#137567" stopOpacity=".17" />
-            <stop offset="100%" stopColor="#137567" stopOpacity=".01" />
+            <stop offset="0%" stopColor="#FFD700" stopOpacity=".22" />
+            <stop offset="100%" stopColor="#FFD700" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 0.5, 1].map((f) => (
@@ -274,10 +275,10 @@ function CashChart({ points }: { points: ForecastPoint[] }) {
               x2="740"
               y1={40 + f * 150}
               y2={40 + f * 150}
-              stroke="#e7ece9"
+              stroke="#333333"
               strokeDasharray="4 5"
             />
-            <text x="0" y={44 + f * 150} fontSize="11" fill="#7f8e89">
+            <text x="0" y={44 + f * 150} fontSize="11" fill="#A9A39A">
               {new Intl.NumberFormat("pt-BR", {
                 notation: "compact",
                 maximumFractionDigits: 1,
@@ -292,14 +293,14 @@ function CashChart({ points }: { points: ForecastPoint[] }) {
             x2="740"
             y1={y(0)}
             y2={y(0)}
-            stroke="#cf745c"
+            stroke="#F28B82"
             strokeDasharray="4 4"
           />
         )}
         <path
           d={line}
           fill="none"
-          stroke="#167b6a"
+          stroke="#FFD700"
           strokeWidth="3"
           strokeLinejoin="round"
         />
@@ -310,7 +311,7 @@ function CashChart({ points }: { points: ForecastPoint[] }) {
               x={x(i)}
               y="222"
               textAnchor={k === 0 ? "start" : k === 2 ? "end" : "middle"}
-              fill="#7f8e89"
+              fill="#A9A39A"
               fontSize="11"
             >
               {dateLabel(points[i].date)}
@@ -321,8 +322,8 @@ function CashChart({ points }: { points: ForecastPoint[] }) {
           cx="740"
           cy={y(values.at(-1) || 0)}
           r="5"
-          fill="#167b6a"
-          stroke="white"
+          fill="#FFD700"
+          stroke="#1A1A1A"
           strokeWidth="3"
         />
       </svg>
@@ -393,7 +394,12 @@ function Login({
             <br />
             <em>em um só lugar.</em>
           </h1>
-          <p>Saldos, compromissos e projeções com base no que você registra.</p>
+          <p>Saldos, cartões, compromissos e projeções com base no que você registra.</p>
+          <div className="login-stats">
+            <div><strong><CountUp value={4} format={(n) => String(Math.round(n))} duration={900} /></strong><span>formatos: PDF, print, planilha e extrato</span></div>
+            <div><strong><CountUp value={100} format={(n) => `${Math.round(n)}%`} duration={900} /></strong><span>revisado por você antes de salvar</span></div>
+            <div><strong><CountUp value={0} format={(n) => String(Math.round(n))} /></strong><span>arquivos guardados após a leitura</span></div>
+          </div>
         </div>
       </section>
       <section className="login-form">
@@ -1145,7 +1151,7 @@ export default function FinanceApp() {
                   <div className="metric-label">
                     Saldo em contas <Wallet size={18} />
                   </div>
-                  <strong>{brl(balance)}</strong>
+                  <strong><CountUp value={Number(balance)} format={brl} /></strong>
                   <span>
                     {bankAccounts.length}{" "}
                     {bankAccounts.length === 1 ? "conta" : "contas"} · hoje
@@ -1161,7 +1167,7 @@ export default function FinanceApp() {
                       <ArrowDownLeft size={17} />
                     </span>
                   </div>
-                  <strong>{brl(sum.income)}</strong>
+                  <strong><CountUp value={Number(sum.income)} format={brl} /></strong>
                   <span>
                     <i className="dot green" /> Realizado
                   </span>
@@ -1173,7 +1179,7 @@ export default function FinanceApp() {
                       <ArrowUpRight size={17} />
                     </span>
                   </div>
-                  <strong>{brl(sum.expense)}</strong>
+                  <strong><CountUp value={Number(sum.expense)} format={brl} /></strong>
                   <span>
                     <i className="dot orange" /> Realizado
                   </span>
@@ -1183,7 +1189,7 @@ export default function FinanceApp() {
                     Previsto em {days} dias <TrendingUp size={18} />
                   </div>
                   <strong className={cents(ending) < 0n ? "negative" : ""}>
-                    {brl(ending)}
+                    <CountUp value={Number(ending)} format={brl} />
                   </strong>
                   <span>
                     <i className="dot neutral" /> Previsto · só compromissos cadastrados

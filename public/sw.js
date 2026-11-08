@@ -1,6 +1,6 @@
 // Service worker mínimo: só para o app ser instalável e mostrar "Sem conexão" offline.
 // NUNCA guarda /api/* nem páginas com dados financeiros: o único item em cache é /offline.html.
-const CACHE = 'fi-offline-v1';
+const CACHE = 'fi-offline-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.add('/offline.html')).then(() => self.skipWaiting()));
